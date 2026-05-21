@@ -45,6 +45,9 @@ async function saveData(data) {
 }
 
 function todayStr() { return new Date().toISOString().slice(0,10); }
+function formatDate(d){
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function pad(n) { return String(n).padStart(2,"0"); }
 function tLabel(h,m) { return `${pad(h)}:${pad(m)}`; }
 function daysDiff(a,b) {
@@ -60,15 +63,26 @@ function getThisMonday(dateStr) {
 }
 
 function weeksAvailable() {
-  const today = new Date(); today.setHours(0,0,0,0);
-  const todayISO = today.toISOString().slice(0,10);
-  const thisMonday = getThisMonday(todayISO);
+  const today = new Date();
+  today.setHours(0,0,0,0);
+
+  const day = today.getDay();
+
+  // 月曜始まり
+  const diff = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(today);
+  monday.setDate(today.getDate() + diff);
+
   const dates = [];
-  for (let i = 0; i < 14; i++) {
-    const d = new Date(thisMonday);
-    d.setDate(d.getDate() + i);
-    dates.push(d.toISOString().slice(0,10));
+
+  for(let i=0;i<14;i++){
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+
+    dates.push(formatDate(d));
   }
+
   return dates;
 }
 
@@ -279,32 +293,17 @@ function BenchTab({data,persist,userName,past}) {
   for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) slots.push({h,m});
 
 function groupByWeek(dates) {
-  const map = {};
-
-  dates.forEach((d) => {
-    const dt = new Date(d + "T00:00:00");
-    const day = dt.getDay();
-
-    // その週の月曜を取得
-    const diff = day === 0 ? -6 : 1 - day;
-
-    const monday = new Date(dt);
-    monday.setDate(dt.getDate() + diff);
-
-    const key = monday.toISOString().slice(0,10);
-
-    if (!map[key]) map[key] = [];
-
-    map[key].push(d);
-  });
-
-  return Object.values(map);
+  return [
+    dates.slice(0,7),
+    dates.slice(7,14)
+  ];
 }
 
  const weeks = groupByWeek(
   past ? historyDates : futureDates
 ).slice(0,2);
-  const activeWeek = weeks.find(w=>w.includes(selDate))||weeks[0];
+  const activeWeek =
+  weeks.find(w=>w.includes(selDate)) || weeks[0];
   const weekLabels = past
     ? weeks.map(w=>`${[...w].reverse()[0].slice(5).replace("-","/")}週`)
     : weeks.map((_,i)=>i===0?"今週":"来週");
