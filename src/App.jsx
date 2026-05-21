@@ -62,11 +62,9 @@ function getThisMonday(dateStr) {
 function weeksAvailable() {
   const today = new Date(); today.setHours(0,0,0,0);
   const todayISO = today.toISOString().slice(0,10);
-  const dow = today.getDay();
   const thisMonday = getThisMonday(todayISO);
-  const totalDays = dow === 1 ? 21 : 14;
   const dates = [];
-  for (let i = 0; i < totalDays; i++) {
+  for (let i = 0; i < 14; i++) {
     const d = new Date(thisMonday);
     d.setDate(d.getDate() + i);
     dates.push(d.toISOString().slice(0,10));
@@ -296,7 +294,7 @@ function BenchTab({data,persist,userName,past}) {
   const activeWeek = weeks.find(w=>w.includes(selDate))||weeks[0];
   const weekLabels = past
     ? weeks.map(w=>`${[...w].reverse()[0].slice(5).replace("-","/")}週`)
-    : weeks.map((_,i)=>i===0?"今週":i===1?"来週":"再来週");
+    : weeks.map((_,i)=>i===0?"今週":"来週");
 
   function getSlot(bench,h,m){return data.reservations?.[selDate]?.[bench]?.[`${h}:${m}`]||null;}
   function confirmRes(bench,h,m,name,memo){
