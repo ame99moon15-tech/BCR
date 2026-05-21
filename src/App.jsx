@@ -236,7 +236,7 @@ function HomeTab({data,setTab}) {
   return (
     <div>
       <div style={S.homeTitle}>🏠 無菌室ダッシュボード</div>
-      <div style={S.homeDate}>{today}（{["月","火","水","木","金","土","日"][new Date(today+"T00:00:00").getDay()]}）</div>
+      <div style={S.homeDate}>{today}（{["日","月","火","水","木","金","土"][new Date(today+"T00:00:00").getDay()]}）</div>
 
       {(lowAll.length>0||overdueClean.length>0)&&(
         <div style={S.alertBox}>
@@ -278,19 +278,28 @@ function BenchTab({data,persist,userName,past}) {
   const slots=[];
   for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) slots.push({h,m});
 
-  function groupByWeek(dates) {
-    const weeks=[]; let cur=[];
-    const sorted = past ? [...dates].reverse() : [...dates];
-    sorted.forEach((d,i)=>{
-      cur.push(d);
-      const dt=new Date(d+"T00:00:00");
-      if(dt.getDay()===0||i===sorted.length-1){weeks.push(cur);cur=[];}
-    });
-    if(cur.length) weeks.push(cur);
-    return weeks;
-  }
+function groupByWeek(dates) {
+  const sorted = past ? [...dates].reverse() : [...dates];
+  const weeks = [];
 
-  const weeks = groupByWeek(past ? historyDates : futureDates);
+  sorted.forEach((d) => {
+    const dt = new Date(d + "T00:00:00");
+    const day = dt.getDay(); // 日:0 月:1 ... 土:6
+
+    // 月曜始まり
+    if (day === 1 || weeks.length === 0) {
+      weeks.push([]);
+    }
+
+    weeks[weeks.length - 1].push(d);
+  });
+
+  return weeks;
+}
+
+ const weeks = groupByWeek(
+  past ? historyDates : futureDates
+).slice(0,2);
   const activeWeek = weeks.find(w=>w.includes(selDate))||weeks[0];
   const weekLabels = past
     ? weeks.map(w=>`${[...w].reverse()[0].slice(5).replace("-","/")}週`)
