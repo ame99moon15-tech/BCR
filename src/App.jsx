@@ -279,12 +279,11 @@ function BenchTab({data,persist,userName,past}) {
   for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) slots.push({h,m});
 
 function groupByWeek(dates) {
-  const sorted = past ? [...dates].reverse() : [...dates];
   const weeks = [];
 
-  sorted.forEach((d) => {
+  dates.forEach((d) => {
     const dt = new Date(d + "T00:00:00");
-    const day = dt.getDay(); // 日:0 月:1 ... 土:6
+    const day = dt.getDay();
 
     // 月曜始まり
     if (day === 1 || weeks.length === 0) {
