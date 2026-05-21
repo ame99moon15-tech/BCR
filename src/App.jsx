@@ -1,13 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
-// ─── JSONBin設定 ───────────────────────────────────────────
 const JSONBIN_API_KEY = "$2a$10$BpdDmKRgRhxFDBtuGquXEuKTwjK..jY/iAlGQB8Y9rDoVU9M.82GG";
 const JSONBIN_URL = "https://api.jsonbin.io/v3/b";
 let BIN_ID = null;
 
 async function loadData() {
   try {
-    // BIN_IDをlocalStorageから取得
     BIN_ID = localStorage.getItem("lab_bin_id");
     if (!BIN_ID) return null;
     const res = await fetch(`${JSONBIN_URL}/${BIN_ID}/latest`, {
@@ -22,7 +20,6 @@ async function loadData() {
 async function saveData(data) {
   try {
     if (!BIN_ID) {
-      // 初回：新規Bin作成
       const res = await fetch(JSONBIN_URL, {
         method: "POST",
         headers: {
@@ -38,37 +35,47 @@ async function saveData(data) {
       BIN_ID = json.metadata.id;
       localStorage.setItem("lab_bin_id", BIN_ID);
     } else {
-      // 更新
       await fetch(`${JSONBIN_URL}/${BIN_ID}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Master-Key": JSONBIN_API_KEY,
-        },
+        headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY },
         body: JSON.stringify(data),
       });
     }
   } catch(e) { console.error(e); }
 }
 
-// ─── ヘルパー ──────────────────────────────────────────────
 function todayStr() { return new Date().toISOString().slice(0,10); }
 function pad(n) { return String(n).padStart(2,"0"); }
 function tLabel(h,m) { return `${pad(h)}:${pad(m)}`; }
 function daysDiff(a,b) {
   return Math.floor((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/86400000);
 }
+
+// 月曜になったら再来週分が解放される
 function weeksAvailable() {
   const today = new Date(); today.setHours(0,0,0,0);
+  const dow = today.getDay(); // 0=日、1=月
+  // 今週の月曜を起点に2週間分（月曜なら3週間目の頭まで解放）
+  const daysToShow = dow === 1 ? 20 : 13; // 月曜なら再来週末(20日先)まで、それ以外は13日先まで
   const dates = [];
-  for (let i=0; i<=13; i++) {
+  for (let i = 0; i <= daysToShow; i++) {
     const d = new Date(today); d.setDate(d.getDate()+i);
     dates.push(d.toISOString().slice(0,10));
   }
   return dates;
 }
 
-// ─── デフォルトデータ ──────────────────────────────────────
+// 過去4週間分
+function pastDates() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const dates = [];
+  for (let i = 1; i <= 28; i++) {
+    const d = new Date(today); d.setDate(d.getDate()-i);
+    dates.push(d.toISOString().slice(0,10));
+  }
+  return dates;
+}
+
 const DEFAULT_INVENTORY = [
   { id:"chip1000", name:"チップ 1000µL", unit:"箱", isBox:true,  perBox:96,  stock:0, inUse:0, alert:2 },
   { id:"chip200",  name:"チップ 200µL",  unit:"箱", isBox:true,  perBox:96,  stock:0, inUse:0, alert:2 },
@@ -98,12 +105,12 @@ const DEFAULT_CLEANING = [
 ];
 
 const BENCHES = ["クリーンベンチ（右）","クリーンベンチ（左）"];
+const FREQ_OPTIONS = ["溜まったら","随時","汚くなったら","週1","月1","年1","年2"];
 
 function makeDefault() {
   return { inventory:DEFAULT_INVENTORY, reagents:[], cleaning:DEFAULT_CLEANING, reservations:{}, members:[] };
 }
 
-// ─── App ───────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab]           = useState("home");
   const [data, setData]         = useState(null);
@@ -140,7 +147,7 @@ export default function App() {
   if (loading) return (
     <div style={S.center}>
       <div style={S.spinner}/>
-      <span style={{color:"#6ee7b7",fontFamily:"monospace",marginTop:12}}>読み込み中...</span>
+      <span style={{color:"#2563eb",fontFamily:"monospace",marginTop:12}}>読み込み中...</span>
     </div>
   );
 
@@ -154,6 +161,7 @@ export default function App() {
   const TABS = [
     {key:"home",      label:"🏠 無菌室"},
     {key:"bench",     label:"🪟 予約"},
+    {key:"history",   label:"📅 過去の予約"},
     {key:"inventory", label:"📦 在庫"},
     {key:"reagent",   label:"🧫 試薬"},
     {key:"cleaning",  label:"🧹 掃除・滅菌"},
@@ -175,7 +183,8 @@ export default function App() {
       </nav>
       <main style={S.main}>
         {tab==="home"      && <HomeTab      data={data} persist={persist} userName={userName} setTab={setTab}/>}
-        {tab==="bench"     && <BenchTab     data={data} persist={persist} userName={userName}/>}
+        {tab==="bench"     && <BenchTab     data={data} persist={persist} userName={userName} past={false}/>}
+        {tab==="history"   && <BenchTab     data={data} persist={persist} userName={userName} past={true}/>}
         {tab==="inventory" && <InventoryTab data={data} persist={persist} userName={userName}/>}
         {tab==="reagent"   && <ReagentTab   data={data} persist={persist} userName={userName}/>}
         {tab==="cleaning"  && <CleaningTab  data={data} persist={persist} userName={userName}/>}
@@ -190,7 +199,7 @@ function NameEntry({onSet}) {
     <div style={S.center}>
       <div style={S.nameCard}>
         <div style={{fontSize:44,marginBottom:8}}>🧪</div>
-        <h2 style={{color:"#6ee7b7",margin:"0 0 6px",fontFamily:"monospace"}}>無菌室管理アプリ</h2>
+        <h2 style={{color:"#2563eb",margin:"0 0 6px",fontFamily:"monospace"}}>無菌室管理アプリ</h2>
         <p style={{color:"#64748b",fontSize:13,margin:"0 0 20px"}}>お名前を入力してください</p>
         <input style={S.nameInput} placeholder="例：飴野" value={val}
           onChange={e=>setVal(e.target.value)}
@@ -212,7 +221,7 @@ function HomeTab({data,setTab}) {
       .forEach(([key,v])=>todayRes.push({bench:b,time:key,name:v.name,memo:v.memo}));
   });
   const lowAll = [...(data.inventory||[]),...(data.reagents||[])].filter(i=>i.alert>0&&i.stock<=i.alert);
-  const freqDays={"週1":7,"月1":30};
+  const freqDays={"週1":7,"月1":30,"年1":365,"年2":730};
   const overdueClean = (data.cleaning||[]).filter(c=>{
     if(!freqDays[c.freq])return false;
     const last=c.log?.[0]?.date;
@@ -222,11 +231,12 @@ function HomeTab({data,setTab}) {
     <div>
       <div style={S.homeTitle}>🏠 無菌室ダッシュボード</div>
       <div style={S.homeDate}>{today}（{["日","月","火","水","木","金","土"][new Date(today+"T00:00:00").getDay()]}）</div>
+
       {(lowAll.length>0||overdueClean.length>0)&&(
         <div style={S.alertBox}>
           {lowAll.length>0&&<div>
             <div style={S.alertTitle}>⚠️ 在庫が少ない</div>
-            {lowAll.map(i=><div key={i.id} style={S.alertItem}>{i.name}：残{i.stock}{i.unit}</div>)}
+            {lowAll.map(i=><div key={i.id} style={S.alertItem} onClick={()=>setTab("inventory")}>{i.name}：残{i.stock}{i.unit}</div>)}
           </div>}
           {overdueClean.length>0&&<div style={{marginTop:lowAll.length?12:0}}>
             <div style={S.alertTitle}>🧹 掃除が必要</div>
@@ -234,6 +244,7 @@ function HomeTab({data,setTab}) {
           </div>}
         </div>
       )}
+
       <div style={S.homeSection}>
         <div style={S.homeSectionTitle}>🪟 今日のクリーンベンチ予約</div>
         {todayRes.length===0
@@ -253,23 +264,32 @@ function HomeTab({data,setTab}) {
   );
 }
 
-function BenchTab({data,persist,userName}) {
-  const dates = weeksAvailable();
-  const [selDate,setSelDate] = useState(todayStr());
+function BenchTab({data,persist,userName,past}) {
+  const futureDates = weeksAvailable();
+  const historyDates = pastDates();
+  const allDates = past ? historyDates : futureDates;
+
+  const [selDate,setSelDate] = useState(past ? historyDates[0] : todayStr());
   const [modal,setModal]     = useState(null);
+
   const slots=[];
   for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) slots.push({h,m});
+
+  // group into weeks
   const weeks=[];
   let cur=[];
-  dates.forEach((d,i)=>{
+  const datesForGroup = past ? [...historyDates].reverse() : futureDates;
+  datesForGroup.forEach((d,i)=>{
     cur.push(d);
     const dt=new Date(d+"T00:00:00");
-    if(dt.getDay()===0||i===dates.length-1){weeks.push(cur);cur=[];}
+    if(dt.getDay()===0||i===datesForGroup.length-1){weeks.push(cur);cur=[];}
   });
   if(cur.length) weeks.push(cur);
   const activeWeek=weeks.find(w=>w.includes(selDate))||weeks[0];
+
   function getSlot(bench,h,m){return data.reservations?.[selDate]?.[bench]?.[`${h}:${m}`]||null;}
   function confirmRes(bench,h,m,name,memo){
+    if(past) return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.reservations[selDate]=nd.reservations[selDate]||{};
     nd.reservations[selDate][bench]=nd.reservations[selDate][bench]||{};
@@ -277,22 +297,31 @@ function BenchTab({data,persist,userName}) {
     persist(nd);setModal(null);
   }
   function cancelRes(bench,h,m){
+    if(past) return;
     const nd=JSON.parse(JSON.stringify(data));
     if(nd.reservations?.[selDate]?.[bench])delete nd.reservations[selDate][bench][`${h}:${m}`];
     persist(nd);setModal(null);
   }
+
   return (
     <div>
+      <div style={{color:"#2563eb",fontSize:14,fontWeight:700,marginBottom:8}}>
+        {past ? "📅 過去の予約履歴（直近4週間）" : "🪟 クリーンベンチ予約"}
+      </div>
       {weeks.length>1&&(
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
+        <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
           {weeks.map((wk,wi)=>{
             const active=wk.includes(selDate);
+            const firstDate=new Date((past?[...wk].reverse():wk)[0]+"T00:00:00");
+            const label=past
+              ? `${wk[wk.length-1].slice(5).replace("-","/")}週`
+              : wi===0?"今週":wi===1?"来週":"再来週";
             return(
-              <button key={wi} onClick={()=>setSelDate(wk.find(d=>d>=todayStr())||wk[0])}
-                style={{...S.smallBtn,flex:1,background:active?"#1e3a5f":"#1e293b",
-                  border:active?"1px solid #3b82f6":"1px solid #334155",
-                  color:active?"#93c5fd":"#64748b"}}>
-                {wi===0?"今週":wi===1?"来週":"再来週"}
+              <button key={wi} onClick={()=>setSelDate(wk[0])}
+                style={{...S.smallBtn,background:active?"#dbeafe":"#f1f5f9",
+                  border:active?"1px solid #2563eb":"1px solid #cbd5e1",
+                  color:active?"#2563eb":"#64748b"}}>
+                {label}
               </button>
             );
           })}
@@ -303,16 +332,19 @@ function BenchTab({data,persist,userName}) {
           const dt=new Date(d+"T00:00:00");
           const dow=["日","月","火","水","木","金","土"][dt.getDay()];
           const isWeekend=dt.getDay()===0||dt.getDay()===6;
+          const hasRes=BENCHES.some(b=>Object.keys(data.reservations?.[d]?.[b]||{}).length>0);
           return(
             <button key={d} onClick={()=>setSelDate(d)}
               style={{...S.dateBtn,...(selDate===d?S.dateBtnActive:{}),
-                ...(isWeekend&&selDate!==d?{color:"#f87171"}:{})}}>
-              {d===todayStr()&&<span style={{fontSize:9,display:"block",color:"#6ee7b7"}}>今日</span>}
+                ...(isWeekend&&selDate!==d?{color:"#ef4444"}:{})}}>
+              {d===todayStr()&&<span style={{fontSize:9,display:"block",color:"#2563eb"}}>今日</span>}
               {d.slice(5).replace("-","/")}({dow})
+              {hasRes&&<span style={{display:"block",fontSize:8,color:selDate===d?"#2563eb":"#94a3b8"}}>●</span>}
             </button>
           );
         })}
       </div>
+
       {BENCHES.map(bench=>(
         <div key={bench} style={S.benchBlock}>
           <div style={S.benchLabel}>{bench}</div>
@@ -321,8 +353,10 @@ function BenchTab({data,persist,userName}) {
               const slot=getSlot(bench,h,m);
               const isMine=slot?.name===userName;
               return(
-                <div key={`${h}-${m}`} onClick={()=>setModal({bench,h,m,existing:slot})}
-                  style={{...S.slot,...(slot?(isMine?S.slotMine:S.slotOther):S.slotEmpty)}}>
+                <div key={`${h}-${m}`}
+                  onClick={()=>!past&&setModal({bench,h,m,existing:slot})}
+                  style={{...S.slot,...(slot?(isMine?S.slotMine:S.slotOther):S.slotEmpty),
+                    ...(past?{cursor:"default"}:{})}}>
                   <span style={S.slotTime}>{tLabel(h,m)}</span>
                   {slot&&<span style={S.slotName}>{slot.name}</span>}
                 </div>
@@ -347,15 +381,15 @@ function ReserveModal({modal,userName,members,onConfirm,onCancel,onClose}){
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
         <div style={S.modalTitle}>{bench}</div>
-        <div style={{color:"#94a3b8",fontSize:13,marginBottom:16}}>{tLabel(h,m)}</div>
+        <div style={{color:"#64748b",fontSize:13,marginBottom:16}}>{tLabel(h,m)}</div>
         {existing?(
           <>
             <div style={S.existingSlot}>
               <span style={{fontSize:20}}>👤</span>
-              <div><div style={{color:"#f1f5f9",fontWeight:700}}>{existing.name}</div>
-                {existing.memo&&<div style={{color:"#94a3b8",fontSize:12}}>{existing.memo}</div>}</div>
+              <div><div style={{color:"#1e293b",fontWeight:700}}>{existing.name}</div>
+                {existing.memo&&<div style={{color:"#64748b",fontSize:12}}>{existing.memo}</div>}</div>
             </div>
-            {isMine&&<button style={{...S.btn,background:"#7f1d1d",marginTop:12}}
+            {isMine&&<button style={{...S.btn,background:"#ef4444",marginTop:12}}
               onClick={()=>onCancel(bench,h,m)}>予約をキャンセル</button>}
             <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>閉じる</button>
           </>
@@ -392,8 +426,7 @@ function InventoryTab({data,persist}){
     const item=nd.inventory.find(i=>i.id===id); if(!item)return;
     if(mode==="use")      item.stock=Math.max(0,item.stock-n);
     else if(mode==="add") item.stock=item.stock+n;
-    else if(mode==="set") item.stock=n;
-    else { item.inUse=Math.max(0,parseInt(n)||0); persist(nd); setEditId(null); setDelta(""); return; }
+    else                  item.inUse=Math.max(0,parseInt(n)||0);
     persist(nd); setEditId(null); setDelta("");
   }
   function addItem(){
@@ -462,8 +495,8 @@ function InventoryTab({data,persist}){
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{textAlign:"right"}}>
-                    <div style={S.itemStock}>{item.stock}<span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{item.unit}</span></div>
-                    {inUse>0&&<div style={{fontSize:11,color:"#fbbf24"}}>使用中 {inUse}{item.unit}</div>}
+                    <div style={S.itemStock}>{item.stock}<span style={{fontSize:11,color:"#64748b",marginLeft:2}}>{item.unit}</span></div>
+                    {inUse>0&&<div style={{fontSize:11,color:"#f59e0b",fontWeight:600}}>使用中 {inUse}{item.unit}</div>}
                   </div>
                   <button style={S.iconBtn} onClick={()=>setEditingItem(isEditSettings?null:{...item})}>⚙️</button>
                 </div>
@@ -475,7 +508,7 @@ function InventoryTab({data,persist}){
               {!isEditSettings&&(isEdit?(
                 <div style={{marginTop:8}}>
                   <div style={{display:"flex",gap:4,marginBottom:6}}>
-                    {[["use","使用"],["add","補充"],["set","直接入力"],["inuse","使用中"]].map(([k,l])=>(
+                    {[["use","消費"],["add","補充"],["inuse","使用中"]].map(([k,l])=>(
                       <button key={k} style={{...S.modeBtn,...(mode===k?S.modeBtnActive:{})}} onClick={()=>setMode(k)}>{l}</button>
                     ))}
                   </div>
@@ -489,8 +522,8 @@ function InventoryTab({data,persist}){
                 </div>
               ):(
                 <div style={{display:"flex",gap:6,marginTop:8}}>
-                  <button style={{...S.smallBtn,flex:1}} onClick={()=>{setEditId(item.id);setMode("use");setDelta("");}}>使用</button>
-                  <button style={{...S.smallBtn,flex:1,background:"#1e3a5f"}} onClick={()=>{setEditId(item.id);setMode("add");setDelta("");}}>補充</button>
+                  <button style={{...S.smallBtn,flex:1}} onClick={()=>{setEditId(item.id);setMode("use");setDelta("");}}>消費</button>
+                  <button style={{...S.smallBtn,flex:1,background:"#dbeafe",color:"#2563eb",border:"1px solid #93c5fd"}} onClick={()=>{setEditId(item.id);setMode("add");setDelta("");}}>補充</button>
                 </div>
               ))}
             </div>
@@ -567,7 +600,6 @@ function ReagentTab({data,persist,userName}){
     const n=parseFloat(delta); if(isNaN(n))return;
     if(mode==="use")      item.stock=Math.max(0,item.stock-n);
     else if(mode==="add") item.stock=item.stock+n;
-    else if(mode==="set") item.stock=n;
     else                  item.inUse=Math.max(0,parseInt(n)||0);
     persist(nd);
   }
@@ -625,11 +657,11 @@ function ReagentCard({item,isLow,isEditSettings,editingItem,setEditingItem,onSav
           <span style={S.itemName}>{isLow&&"⚠️ "}{item.name}</span>
           {item.note&&<div style={{color:"#64748b",fontSize:12,marginTop:2}}>{item.note}</div>}
           <div style={{marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
-            <span style={{fontSize:13,color:"#6ee7b7",fontWeight:700}}>在庫 {item.stock}<span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{item.unit||"本"}</span></span>
-            <span style={{fontSize:13,color:"#fbbf24",fontWeight:600}}>使用中 {item.inUse||0}<span style={{fontSize:11,color:"#94a3b8",marginLeft:2}}>{item.unit||"本"}</span></span>
+            <span style={{fontSize:13,color:"#2563eb",fontWeight:700}}>在庫 {item.stock}<span style={{fontSize:11,color:"#64748b",marginLeft:2}}>{item.unit||"本"}</span></span>
+            <span style={{fontSize:13,color:"#f59e0b",fontWeight:600}}>使用中 {item.inUse||0}<span style={{fontSize:11,color:"#64748b",marginLeft:2}}>{item.unit||"本"}</span></span>
           </div>
-          {item.openedBy&&<div style={{fontSize:12,color:"#93c5fd",marginTop:2}}>使用者：{item.openedBy}</div>}
-          <div style={{color:"#475569",fontSize:11,marginTop:2}}>登録：{item.addedBy}（{item.addedAt}）</div>
+          {item.openedBy&&<div style={{fontSize:12,color:"#2563eb",marginTop:2}}>使用者：{item.openedBy}</div>}
+          <div style={{color:"#94a3b8",fontSize:11,marginTop:2}}>登録：{item.addedBy}（{item.addedAt}）</div>
         </div>
         <button style={S.iconBtn} onClick={()=>setEditingItem(isEditSettings?null:{...item})}>⚙️</button>
       </div>
@@ -640,7 +672,7 @@ function ReagentCard({item,isLow,isEditSettings,editingItem,setEditingItem,onSav
       {!isEditSettings&&(editStock?(
         <div style={{marginTop:8}}>
           <div style={{display:"flex",gap:4,marginBottom:6}}>
-            {[["use","使用"],["add","補充"],["set","直接入力"],["inuse","使用中"]].map(([k,l])=>(
+            {[["use","消費"],["add","補充"],["inuse","使用中"]].map(([k,l])=>(
               <button key={k} style={{...S.modeBtn,...(mode===k?S.modeBtnActive:{})}} onClick={()=>setMode(k)}>{l}</button>
             ))}
           </div>
@@ -653,8 +685,8 @@ function ReagentCard({item,isLow,isEditSettings,editingItem,setEditingItem,onSav
         </div>
       ):(
         <div style={{display:"flex",gap:6,marginTop:8}}>
-          <button style={{...S.smallBtn,flex:1}} onClick={()=>{setEditStock(true);setMode("use");setDelta("");}}>使用</button>
-          <button style={{...S.smallBtn,flex:1,background:"#1e3a5f"}} onClick={()=>{setEditStock(true);setMode("add");setDelta("");}}>補充</button>
+          <button style={{...S.smallBtn,flex:1}} onClick={()=>{setEditStock(true);setMode("use");setDelta("");}}>消費</button>
+          <button style={{...S.smallBtn,flex:1,background:"#dbeafe",color:"#2563eb",border:"1px solid #93c5fd"}} onClick={()=>{setEditStock(true);setMode("add");setDelta("");}}>補充</button>
         </div>
       ))}
     </div>
@@ -699,8 +731,8 @@ function CleaningTab({data,persist,userName}){
   const [showAddItem,setShowAddItem]=useState(false);
   const [newClean,setNewClean]=useState({name:"",freq:"溜まったら"});
   const today=todayStr();
-  const freqOrder={"溜まったら":0,"随時":1,"週1":2,"月1":3,"年2":4};
-  const freqDays={"週1":7,"月1":30};
+  const freqOrder={"溜まったら":0,"汚くなったら":1,"随時":2,"週1":3,"月1":4,"年1":5,"年2":6};
+  const freqDays={"週1":7,"月1":30,"年1":365,"年2":730};
   const sorted=[...(data.cleaning||[])].sort((a,b)=>(freqOrder[a.freq]??9)-(freqOrder[b.freq]??9));
 
   function logItem(id){
@@ -743,7 +775,7 @@ function CleaningTab({data,persist,userName}){
           <input style={S.input} placeholder="項目名 *" value={newClean.name} onChange={e=>setNewClean({...newClean,name:e.target.value})}/>
           <label style={S.label}>頻度</label>
           <select style={S.input} value={newClean.freq} onChange={e=>setNewClean({...newClean,freq:e.target.value})}>
-            {["溜まったら","随時","週1","月1","年2"].map(f=><option key={f}>{f}</option>)}
+            {FREQ_OPTIONS.map(f=><option key={f}>{f}</option>)}
           </select>
           <button style={S.btn} onClick={addCleanItem}>追加する</button>
         </div>
@@ -816,71 +848,71 @@ function CleaningTab({data,persist,userName}){
 }
 
 const S={
-  root:{minHeight:"100vh",background:"#0f172a",fontFamily:"'Noto Sans JP','Hiragino Sans',sans-serif",color:"#f1f5f9",paddingBottom:80},
-  center:{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0f172a"},
-  spinner:{width:32,height:32,borderRadius:"50%",border:"3px solid #1e293b",borderTopColor:"#6ee7b7",animation:"spin 0.8s linear infinite"},
-  header:{background:"#0f172a",borderBottom:"1px solid #1e293b",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100},
-  headerTitle:{fontSize:18,fontWeight:700,color:"#6ee7b7",letterSpacing:1},
-  headerUser:{fontSize:13,color:"#94a3b8"},
-  nav:{display:"flex",overflowX:"auto",background:"#0f172a",borderBottom:"1px solid #1e293b",position:"sticky",top:53,zIndex:99},
-  navBtn:{flexShrink:0,padding:"10px 10px",background:"none",border:"none",color:"#64748b",fontSize:11,cursor:"pointer",fontFamily:"inherit",borderBottom:"2px solid transparent",whiteSpace:"nowrap"},
-  navActive:{color:"#6ee7b7",borderBottom:"2px solid #6ee7b7"},
+  root:{minHeight:"100vh",background:"#f8fafc",fontFamily:"'Noto Sans JP','Hiragino Sans',sans-serif",color:"#1e293b",paddingBottom:80},
+  center:{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f8fafc"},
+  spinner:{width:32,height:32,borderRadius:"50%",border:"3px solid #dbeafe",borderTopColor:"#2563eb",animation:"spin 0.8s linear infinite"},
+  header:{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"},
+  headerTitle:{fontSize:18,fontWeight:700,color:"#2563eb",letterSpacing:1},
+  headerUser:{fontSize:13,color:"#64748b"},
+  nav:{display:"flex",overflowX:"auto",background:"#fff",borderBottom:"1px solid #e2e8f0",position:"sticky",top:53,zIndex:99},
+  navBtn:{flexShrink:0,padding:"10px 10px",background:"none",border:"none",color:"#94a3b8",fontSize:11,cursor:"pointer",fontFamily:"inherit",borderBottom:"2px solid transparent",whiteSpace:"nowrap"},
+  navActive:{color:"#2563eb",borderBottom:"2px solid #2563eb"},
   main:{padding:16},
-  nameCard:{background:"#1e293b",borderRadius:16,padding:32,width:"90%",maxWidth:340,display:"flex",flexDirection:"column",alignItems:"center",boxShadow:"0 8px 32px rgba(0,0,0,0.5)"},
-  nameInput:{width:"100%",padding:"12px 14px",background:"#0f172a",border:"1px solid #334155",borderRadius:8,color:"#f1f5f9",fontSize:16,marginBottom:12,fontFamily:"inherit",boxSizing:"border-box"},
-  homeTitle:{fontSize:17,fontWeight:700,color:"#6ee7b7",marginBottom:4},
+  nameCard:{background:"#fff",borderRadius:16,padding:32,width:"90%",maxWidth:340,display:"flex",flexDirection:"column",alignItems:"center",boxShadow:"0 4px 20px rgba(0,0,0,0.08)"},
+  nameInput:{width:"100%",padding:"12px 14px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,color:"#1e293b",fontSize:16,marginBottom:12,fontFamily:"inherit",boxSizing:"border-box"},
+  homeTitle:{fontSize:17,fontWeight:700,color:"#2563eb",marginBottom:4},
   homeDate:{fontSize:13,color:"#64748b",marginBottom:16},
-  alertBox:{background:"#1a160a",border:"1px solid #f59e0b",borderRadius:12,padding:14,marginBottom:16},
-  alertTitle:{color:"#f59e0b",fontSize:13,fontWeight:700,marginBottom:6},
-  alertItem:{color:"#fcd34d",fontSize:13,padding:"3px 0",cursor:"pointer"},
-  homeSection:{background:"#1e293b",borderRadius:12,padding:14,marginBottom:12},
-  homeSectionTitle:{fontSize:14,fontWeight:700,color:"#94a3b8",marginBottom:8},
-  homeResItem:{display:"flex",gap:8,alignItems:"center",padding:"4px 0",borderBottom:"1px solid #0f172a"},
-  homeResBench:{background:"#164e1a",borderRadius:6,padding:"2px 6px",fontSize:11,color:"#6ee7b7",flexShrink:0},
-  homeResTime:{color:"#94a3b8",fontSize:12,flexShrink:0},
-  homeResName:{color:"#f1f5f9",fontSize:13,fontWeight:600},
-  homeResMemo:{color:"#64748b",fontSize:11},
-  homeLink:{marginTop:10,background:"none",border:"none",color:"#3b82f6",fontSize:13,cursor:"pointer",padding:0,fontFamily:"inherit",display:"block"},
+  alertBox:{background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:12,padding:14,marginBottom:16},
+  alertTitle:{color:"#ea580c",fontSize:13,fontWeight:700,marginBottom:6},
+  alertItem:{color:"#c2410c",fontSize:13,padding:"3px 0",cursor:"pointer"},
+  homeSection:{background:"#fff",borderRadius:12,padding:14,marginBottom:12,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"},
+  homeSectionTitle:{fontSize:14,fontWeight:700,color:"#64748b",marginBottom:8},
+  homeResItem:{display:"flex",gap:8,alignItems:"center",padding:"6px 0",borderBottom:"1px solid #f1f5f9"},
+  homeResBench:{background:"#dbeafe",borderRadius:6,padding:"2px 8px",fontSize:11,color:"#2563eb",flexShrink:0,fontWeight:600},
+  homeResTime:{color:"#64748b",fontSize:12,flexShrink:0},
+  homeResName:{color:"#1e293b",fontSize:13,fontWeight:600},
+  homeResMemo:{color:"#94a3b8",fontSize:11},
+  homeLink:{marginTop:10,background:"none",border:"none",color:"#2563eb",fontSize:13,cursor:"pointer",padding:0,fontFamily:"inherit",display:"block"},
   datePicker:{display:"flex",gap:6,overflowX:"auto",paddingBottom:8,marginBottom:12},
-  dateBtn:{flexShrink:0,padding:"6px 10px",background:"#1e293b",border:"1px solid #334155",borderRadius:20,color:"#94a3b8",fontSize:11,cursor:"pointer",textAlign:"center",lineHeight:1.4},
-  dateBtnActive:{background:"#164e1a",border:"1px solid #6ee7b7",color:"#6ee7b7"},
+  dateBtn:{flexShrink:0,padding:"6px 10px",background:"#fff",border:"1px solid #e2e8f0",borderRadius:20,color:"#64748b",fontSize:11,cursor:"pointer",textAlign:"center",lineHeight:1.4},
+  dateBtnActive:{background:"#dbeafe",border:"1px solid #2563eb",color:"#2563eb"},
   benchBlock:{marginBottom:20},
-  benchLabel:{color:"#6ee7b7",fontSize:14,fontWeight:700,marginBottom:8},
+  benchLabel:{color:"#2563eb",fontSize:14,fontWeight:700,marginBottom:8},
   slotGrid:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:3},
   slot:{padding:"6px 2px",borderRadius:6,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",minHeight:44},
-  slotEmpty:{background:"#1e293b",border:"1px solid #1e293b"},
-  slotMine:{background:"#14532d",border:"1px solid #6ee7b7"},
-  slotOther:{background:"#1e3a5f",border:"1px solid #3b82f6"},
-  slotTime:{fontSize:9,color:"#64748b"},
-  slotName:{fontSize:9,fontWeight:700,color:"#f1f5f9",marginTop:2,textAlign:"center",wordBreak:"break-all",lineHeight:1.2},
-  overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200},
-  modalCard:{background:"#1e293b",borderRadius:"16px 16px 0 0",padding:24,width:"100%",maxWidth:480,paddingBottom:40},
-  modalTitle:{fontSize:17,fontWeight:700,color:"#6ee7b7",marginBottom:4},
-  existingSlot:{background:"#0f172a",borderRadius:10,padding:14,display:"flex",gap:12,alignItems:"flex-start"},
+  slotEmpty:{background:"#f1f5f9",border:"1px solid #e2e8f0"},
+  slotMine:{background:"#dbeafe",border:"1px solid #2563eb"},
+  slotOther:{background:"#fef3c7",border:"1px solid #f59e0b"},
+  slotTime:{fontSize:9,color:"#94a3b8"},
+  slotName:{fontSize:9,fontWeight:700,color:"#1e293b",marginTop:2,textAlign:"center",wordBreak:"break-all",lineHeight:1.2},
+  overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200},
+  modalCard:{background:"#fff",borderRadius:"16px 16px 0 0",padding:24,width:"100%",maxWidth:480,paddingBottom:40,boxShadow:"0 -4px 20px rgba(0,0,0,0.1)"},
+  modalTitle:{fontSize:17,fontWeight:700,color:"#2563eb",marginBottom:4},
+  existingSlot:{background:"#f8fafc",borderRadius:10,padding:14,display:"flex",gap:12,alignItems:"flex-start",border:"1px solid #e2e8f0"},
   sectionHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12},
-  sectionTitle:{fontSize:16,fontWeight:700,color:"#6ee7b7",display:"block"},
+  sectionTitle:{fontSize:16,fontWeight:700,color:"#2563eb",display:"block"},
   itemList:{display:"flex",flexDirection:"column",gap:8},
-  itemCard:{background:"#1e293b",borderRadius:12,padding:14,border:"1px solid #1e293b"},
-  itemCardLow:{border:"1px solid #f59e0b",background:"#1a160a"},
+  itemCard:{background:"#fff",borderRadius:12,padding:14,border:"1px solid #e2e8f0",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"},
+  itemCardLow:{border:"1px solid #fed7aa",background:"#fff7ed"},
   itemTop:{display:"flex",justifyContent:"space-between",alignItems:"flex-start"},
-  itemName:{fontSize:14,fontWeight:600,color:"#f1f5f9"},
-  itemStock:{fontSize:22,fontWeight:700,color:"#6ee7b7"},
-  subLabel:{fontSize:11,color:"#475569"},
-  addCard:{background:"#1e293b",borderRadius:12,padding:14,marginBottom:12,display:"flex",flexDirection:"column",gap:8,border:"1px solid #334155"},
-  settingsEditor:{marginTop:10,background:"#0f172a",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:8,border:"1px solid #334155"},
-  input:{width:"100%",padding:"10px 12px",background:"#0f172a",border:"1px solid #334155",borderRadius:8,color:"#f1f5f9",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"},
-  btn:{width:"100%",padding:12,background:"#166534",border:"none",borderRadius:8,color:"#f1f5f9",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"},
-  btnOutline:{width:"100%",padding:11,background:"transparent",border:"1px solid #334155",borderRadius:8,color:"#94a3b8",fontSize:14,cursor:"pointer",fontFamily:"inherit"},
-  btnDanger:{padding:"11px 14px",background:"#7f1d1d",border:"none",borderRadius:8,color:"#f1f5f9",fontSize:14,cursor:"pointer",fontFamily:"inherit"},
-  smallBtn:{padding:"8px 12px",background:"#166534",border:"none",borderRadius:8,color:"#f1f5f9",fontSize:12,cursor:"pointer",fontFamily:"inherit"},
-  iconBtn:{padding:"6px 10px",background:"transparent",border:"1px solid #334155",borderRadius:8,fontSize:14,cursor:"pointer"},
-  modeBtn:{flex:1,padding:"6px 0",background:"#0f172a",border:"1px solid #334155",borderRadius:6,color:"#64748b",fontSize:11,cursor:"pointer",fontFamily:"inherit"},
-  modeBtnActive:{background:"#1e3a5f",border:"1px solid #3b82f6",color:"#93c5fd"},
-  label:{fontSize:12,color:"#94a3b8",marginBottom:2,display:"block"},
-  freqBadge:{marginLeft:8,padding:"2px 8px",background:"#0f172a",border:"1px solid #334155",borderRadius:10,fontSize:11,color:"#64748b"},
-  doneBtn:{padding:"6px 12px",background:"#166534",border:"none",borderRadius:8,color:"#f1f5f9",fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0},
-  lastLog:{fontSize:12,color:"#64748b",marginTop:4},
+  itemName:{fontSize:14,fontWeight:600,color:"#1e293b"},
+  itemStock:{fontSize:22,fontWeight:700,color:"#2563eb"},
+  subLabel:{fontSize:11,color:"#94a3b8"},
+  addCard:{background:"#fff",borderRadius:12,padding:14,marginBottom:12,display:"flex",flexDirection:"column",gap:8,border:"1px solid #e2e8f0",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"},
+  settingsEditor:{marginTop:10,background:"#f8fafc",borderRadius:10,padding:12,display:"flex",flexDirection:"column",gap:8,border:"1px solid #e2e8f0"},
+  input:{width:"100%",padding:"10px 12px",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,color:"#1e293b",fontSize:14,fontFamily:"inherit",boxSizing:"border-box"},
+  btn:{width:"100%",padding:12,background:"#2563eb",border:"none",borderRadius:8,color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"},
+  btnOutline:{width:"100%",padding:11,background:"transparent",border:"1px solid #e2e8f0",borderRadius:8,color:"#64748b",fontSize:14,cursor:"pointer",fontFamily:"inherit"},
+  btnDanger:{padding:"11px 14px",background:"#ef4444",border:"none",borderRadius:8,color:"#fff",fontSize:14,cursor:"pointer",fontFamily:"inherit"},
+  smallBtn:{padding:"8px 12px",background:"#2563eb",border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontFamily:"inherit"},
+  iconBtn:{padding:"6px 10px",background:"transparent",border:"1px solid #e2e8f0",borderRadius:8,fontSize:14,cursor:"pointer"},
+  modeBtn:{flex:1,padding:"6px 0",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,color:"#64748b",fontSize:11,cursor:"pointer",fontFamily:"inherit"},
+  modeBtnActive:{background:"#dbeafe",border:"1px solid #2563eb",color:"#2563eb"},
+  label:{fontSize:12,color:"#64748b",marginBottom:2,display:"block"},
+  freqBadge:{marginLeft:8,padding:"2px 8px",background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:10,fontSize:11,color:"#64748b"},
+  doneBtn:{padding:"6px 12px",background:"#2563eb",border:"none",borderRadius:8,color:"#fff",fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0},
+  lastLog:{fontSize:12,color:"#94a3b8",marginTop:4},
   logList:{marginTop:4,display:"flex",flexDirection:"column",gap:4},
-  logEntry:{fontSize:11,color:"#475569",padding:"3px 8px"},
-  empty:{color:"#475569",textAlign:"center",padding:32,fontSize:14},
+  logEntry:{fontSize:11,color:"#64748b",padding:"3px 8px"},
+  empty:{color:"#94a3b8",textAlign:"center",padding:32,fontSize:14},
 };
