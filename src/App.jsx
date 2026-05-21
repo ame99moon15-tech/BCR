@@ -279,21 +279,26 @@ function BenchTab({data,persist,userName,past}) {
   for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) slots.push({h,m});
 
 function groupByWeek(dates) {
-  const weeks = [];
+  const map = {};
 
   dates.forEach((d) => {
     const dt = new Date(d + "T00:00:00");
     const day = dt.getDay();
 
-    // 月曜始まり
-    if (day === 1 || weeks.length === 0) {
-      weeks.push([]);
-    }
+    // その週の月曜を取得
+    const diff = day === 0 ? -6 : 1 - day;
 
-    weeks[weeks.length - 1].push(d);
+    const monday = new Date(dt);
+    monday.setDate(dt.getDate() + diff);
+
+    const key = monday.toISOString().slice(0,10);
+
+    if (!map[key]) map[key] = [];
+
+    map[key].push(d);
   });
 
-  return weeks;
+  return Object.values(map);
 }
 
  const weeks = groupByWeek(
