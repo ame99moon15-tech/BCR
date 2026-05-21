@@ -236,7 +236,7 @@ function HomeTab({data,setTab}) {
   return (
     <div>
       <div style={S.homeTitle}>🏠 無菌室ダッシュボード</div>
-      <div style={S.homeDate}>{today}（{["日","月","火","水","木","金","土"][new Date(today+"T00:00:00").getDay()]}）</div>
+      <div style={S.homeDate}>{today}（{["月","火","水","木","金","土","日"][new Date(today+"T00:00:00").getDay()]}）</div>
 
       {(lowAll.length>0||overdueClean.length>0)&&(
         <div style={S.alertBox}>
