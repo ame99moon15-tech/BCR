@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 const JSONBIN_API_KEY = "$2a$10$BpdDmKRgRhxFDBtuGquXEuKTwjK..jY/iAlGQB8Y9rDoVU9M.82GG";
 const JSONBIN_URL = "https://api.jsonbin.io/v3/b";
-let BIN_ID = null;
+let BIN_ID = "6a0eab84ee5a733b12f4d860";
 
 async function loadData() {
   try {
-    BIN_ID = localStorage.getItem("lab_bin_id");
-    if (!BIN_ID) return null;
+    BIN_ID = "6a0eab84ee5a733b12f4d860";
+    localStorage.setItem("lab_bin_id", BIN_ID);
     const res = await fetch(`${JSONBIN_URL}/${BIN_ID}/latest`, {
       headers: { "X-Master-Key": JSONBIN_API_KEY }
     });
