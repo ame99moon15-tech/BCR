@@ -913,12 +913,34 @@ const allMembers = ["なし", ...(data.members || [])];
 
 
   function logItem(id){
-    const nd=JSON.parse(JSON.stringify(data));
-    const item=nd.cleaning.find(c=>c.id===id); if(!item)return;
-    const whoStr=coWorker&&coWorker.trim()?`${userName}・${coWorker.trim()}`:userName;
-    item.log=[{id:"l"+Date.now(),date:logDate,who:whoStr,note},...(item.log||[])];
-    persist(nd); setActiveId(null); setNote(""); setCoWorker(""); setLogDate(todayStr());
-  }
+  const nd=JSON.parse(JSON.stringify(data));
+  const item=nd.cleaning.find(c=>c.id===id);
+  if(!item)return;
+
+  const worker = String(coWorker || "").trim();
+
+  const whoStr =
+    worker && worker !== "なし"
+      ? `${userName}・${worker}`
+      : userName;
+
+  item.log=[
+    {
+      id:"l"+Date.now(),
+      date:logDate,
+      who:whoStr,
+      note
+    },
+    ...(item.log||[])
+  ];
+
+  persist(nd);
+
+  setActiveId(null);
+  setNote("");
+  setCoWorker("");
+  setLogDate(todayStr());
+}
   function deleteLog(cleanId,logId){
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===cleanId); if(!item)return;
@@ -997,7 +1019,7 @@ const allMembers = ["なし", ...(data.members || [])];
 </div>
                     <label style={S.label}>一緒にした人</label>
                     <select style={S.input} value={coWorker} onChange={e=>setCoWorker(e.target.value)}>
-                      {allMembers.map(m=><option key={m}>{m}</option>)}
+                      {allMembers.map(m=><option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>
                   <input style={S.input} placeholder="メモ（任意）" value={note} onChange={e=>setNote(e.target.value)}/>
