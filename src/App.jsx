@@ -932,10 +932,12 @@ function CleaningTab({data,persist,userName}){
               {isActive&&(
                 <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
                   <div>
-                    <label style={S.label}>一緒にした人</label>
-                    <select style={S.input} value={coWorker} onChange={e=>setCoWorker(e.target.value)}>
-                      {allMembers.map(m=><option key={m}>{m}</option>)}
-                    </select>
+                    <label style={S.label}>日付</label>
+                    <input style={S.input} type="date" value={logDate} onChange={e=>setLogDate(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label style={S.label}>一緒にした人（任意）</label>
+                    <input style={S.input} placeholder="例：木村、西岡" value={coWorker} onChange={e=>setCoWorker(e.target.value)}/>
                   </div>
                   <input style={S.input} placeholder="メモ（任意）" value={note} onChange={e=>setNote(e.target.value)}/>
                   <button style={S.btn} onClick={()=>logItem(item.id)}>記録する</button>
