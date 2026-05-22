@@ -847,7 +847,8 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
 function CleaningTab({data,persist,userName}){
   const [activeId,setActiveId]=useState(null);
   const [note,setNote]=useState("");
-  const [coWorker,setCoWorker]=useState("なし");
+  const [coWorker,setCoWorker]=useState("");
+  const [logDate,setLogDate]=useState(todayStr());
   const [editLog,setEditLog]=useState(null);
   const [editLogNote,setEditLogNote]=useState("");
   const [showAddItem,setShowAddItem]=useState(false);
@@ -856,14 +857,14 @@ function CleaningTab({data,persist,userName}){
   const freqOrder={"溜まったら":0,"汚くなったら":1,"随時":2,"週1":3,"月1":4,"年1":5,"年2":6};
   const freqDays={"週1":7,"月1":30,"年1":365,"年2":730};
   const sorted=[...(data.cleaning||[])].sort((a,b)=>(freqOrder[a.freq]??9)-(freqOrder[b.freq]??9));
-  const allMembers=["なし",...(data.members||[]).filter(m=>m!==userName)];
+
 
   function logItem(id){
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===id); if(!item)return;
-    const whoStr=coWorker&&coWorker!=="なし"?`${userName}・${coWorker}`:userName;
-    item.log=[{id:"l"+Date.now(),date:today,who:whoStr,note},...(item.log||[])];
-    persist(nd); setActiveId(null); setNote(""); setCoWorker("なし");
+    const whoStr=coWorker&&coWorker.trim()?`${userName}・${coWorker.trim()}`:userName;
+    item.log=[{id:"l"+Date.now(),date:logDate,who:whoStr,note},...(item.log||[])];
+    persist(nd); setActiveId(null); setNote(""); setCoWorker(""); setLogDate(todayStr());
   }
   function deleteLog(cleanId,logId){
     const nd=JSON.parse(JSON.stringify(data));
@@ -918,7 +919,7 @@ function CleaningTab({data,persist,userName}){
                   <span style={S.freqBadge}>{item.freq}</span>
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <button style={S.doneBtn} onClick={()=>{setActiveId(isActive?null:item.id);setNote("");setCoWorker("なし");}}>
+                  <button style={S.doneBtn} onClick={()=>{setActiveId(isActive?null:item.id);setNote("");setCoWorker("");setLogDate(todayStr());}}>
                     {isActive?"✕":"✓ やった"}
                   </button>
                   <button style={{...S.iconBtn,fontSize:12,padding:"4px 8px",color:"#dc2626"}}
