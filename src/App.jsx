@@ -304,58 +304,6 @@ function BenchTab({data,persist,userName,past}) {
     const nd=JSON.parse(JSON.stringify(data));
     nd.reservations[selDate]=nd.reservations[selDate]||{};
     nd.reservations[selDate][bench]=nd.reservations[selDate][bench]||{};
-  // =========================
-  // まず全スロット確認
-  // =========================
-
-  let checkH = startH;
-  let checkM = startM;
-
-  while(checkH * 60 + checkM < endH * 60 + endM){
-
-    const key = tLabel(checkH, checkM);
-
-    if(nd.reservations[selDate][bench][key]){
-      alert("この時間帯には既に予約があります");
-      return;
-    }
-
-    checkM += 10;
-
-    if(checkM >= 60){
-      checkM = 0;
-      checkH++;
-    }
-  }
-
-  // =========================
-  // 問題なければ保存
-  // =========================
-
-  let h = startH;
-  let m = startM;
-
-  while(h * 60 + m < endH * 60 + endM){
-
-    const key = tLabel(h, m);
-
-    nd.reservations[selDate][bench][key] = {
-      name,
-      partner,
-      memo,
-      startH,
-      startM,
-      endH,
-      endM
-    };
-
-    m += 10;
-
-    if(m >= 60){
-      m = 0;
-      h++;
-    }
-  }
     // startからendまでの全スロットを埋める
     let h=startH, m=startM;
     while(h*60+m < endH*60+endM) {
@@ -898,7 +846,6 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
 // ── CleaningTab ────────────────────────────────────────────
 function CleaningTab({data,persist,userName}){
   const [activeId,setActiveId]=useState(null);
-const allMembers = ["なし", ...(data.members || [])];
   const [note,setNote]=useState("");
   const [coWorker,setCoWorker]=useState("");
   const [logDate,setLogDate]=useState(todayStr());
@@ -913,34 +860,12 @@ const allMembers = ["なし", ...(data.members || [])];
 
 
   function logItem(id){
-  const nd=JSON.parse(JSON.stringify(data));
-  const item=nd.cleaning.find(c=>c.id===id);
-  if(!item)return;
-
-  const worker = String(coWorker || "").trim();
-
-  const whoStr =
-    worker && worker !== "なし"
-      ? `${userName}・${worker}`
-      : userName;
-
-  item.log=[
-    {
-      id:"l"+Date.now(),
-      date:logDate,
-      who:whoStr,
-      note
-    },
-    ...(item.log||[])
-  ];
-
-  persist(nd);
-
-  setActiveId(null);
-  setNote("");
-  setCoWorker("");
-  setLogDate(todayStr());
-}
+    const nd=JSON.parse(JSON.stringify(data));
+    const item=nd.cleaning.find(c=>c.id===id); if(!item)return;
+    const whoStr=coWorker&&coWorker.trim()?`${userName}・${coWorker.trim()}`:userName;
+    item.log=[{id:"l"+Date.now(),date:logDate,who:whoStr,note},...(item.log||[])];
+    persist(nd); setActiveId(null); setNote(""); setCoWorker(""); setLogDate(todayStr());
+  }
   function deleteLog(cleanId,logId){
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===cleanId); if(!item)return;
@@ -1007,19 +932,9 @@ const allMembers = ["なし", ...(data.members || [])];
               {isActive&&(
                 <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
                   <div>
-<div>
-  <label style={S.label}>実施日</label>
-
-  <input
-    type="date"
-    style={S.input}
-    value={logDate}
-    onChange={e=>setLogDate(e.target.value)}
-  />
-</div>
                     <label style={S.label}>一緒にした人</label>
                     <select style={S.input} value={coWorker} onChange={e=>setCoWorker(e.target.value)}>
-                      {allMembers.map(m=><option key={m} value={m}>{m}</option>)}
+                      {allMembers.map(m=><option key={m}>{m}</option>)}
                     </select>
                   </div>
                   <input style={S.input} placeholder="メモ（任意）" value={note} onChange={e=>setNote(e.target.value)}/>
