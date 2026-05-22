@@ -19,41 +19,24 @@ async function loadData() {
 
 async function saveData(data) {
   try {
-    if (!BIN_ID) {
-      const res = await fetch(JSONBIN_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Master-Key": JSONBIN_API_KEY,
-          "X-Bin-Name": "lab-manager",
-          "X-Bin-Private": "false",
-        },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) return;
-      const json = await res.json();
-      BIN_ID = json.metadata.id;
-      localStorage.setItem("lab_bin_id", BIN_ID);
-    } else {
-      await fetch(`${JSONBIN_URL}/${BIN_ID}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY },
-        body: JSON.stringify(data),
-      });
-    }
+    await fetch(`${JSONBIN_URL}/${BIN_ID}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY },
+      body: JSON.stringify(data),
+    });
   } catch(e) { console.error(e); }
 }
 
-function todayStr() { return new Date().toISOString().slice(0,10); }
-function formatDate(d){
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+// 毎回 new Date() で今日を取得（キャッシュなし）
+function todayStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
 }
 function pad(n) { return String(n).padStart(2,"0"); }
 function tLabel(h,m) { return `${pad(h)}:${pad(m)}`; }
 function daysDiff(a,b) {
   return Math.floor((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/86400000);
 }
-
 function getThisMonday(dateStr) {
   const d = new Date(dateStr+"T00:00:00");
   const dow = d.getDay();
@@ -61,37 +44,27 @@ function getThisMonday(dateStr) {
   d.setDate(d.getDate() + diff);
   return d;
 }
-
 function weeksAvailable() {
-  const today = new Date();
-  today.setHours(0,0,0,0);
-
-  const day = today.getDay();
-
-  // 月曜始まり
-  const diff = day === 0 ? -6 : 1 - day;
-
-  const monday = new Date(today);
-  monday.setDate(today.getDate() + diff);
-
+  const now = new Date();
+  const todayISO = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const thisMonday = getThisMonday(todayISO);
   const dates = [];
-
-  for(let i=0;i<14;i++){
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-
-    dates.push(formatDate(d));
+  for (let i = 0; i < 14; i++) {
+    const d = new Date(thisMonday);
+    d.setDate(d.getDate() + i);
+    dates.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
   }
-
   return dates;
 }
-
 function pastDates() {
-  const today = new Date(); today.setHours(0,0,0,0);
+  const now = new Date();
+  const todayISO = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  // 過去30日を月曜始まりで並べる（古い順）
   const dates = [];
-  for (let i = 1; i <= 30; i++) {
-    const d = new Date(today); d.setDate(d.getDate()-i);
-    dates.push(d.toISOString().slice(0,10));
+  for (let i = 30; i >= 1; i--) {
+    const d = new Date(todayISO+"T00:00:00");
+    d.setDate(d.getDate()-i);
+    dates.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`);
   }
   return dates;
 }
@@ -110,7 +83,6 @@ const DEFAULT_INVENTORY = [
   { id:"pasteur",  name:"パスツール",    unit:"本", isBox:false, perBox:null,stock:0, inUse:0, alert:20 },
   { id:"haiter",   name:"ハイター",      unit:"本", isBox:false, perBox:null,stock:0, inUse:0, alert:1 },
 ];
-
 const DEFAULT_CLEANING = [
   { id:"p_trash",  name:"プラごみAC",             freq:"溜まったら", log:[] },
   { id:"k_trash",  name:"紙ごみAC",               freq:"溜まったら", log:[] },
@@ -123,7 +95,6 @@ const DEFAULT_CLEANING = [
   { id:"incub_t",  name:"恒温槽掃除",             freq:"年2",        log:[] },
   { id:"sterilize",name:"オートクレーブ滅菌",     freq:"随時",       log:[] },
 ];
-
 const BENCHES = ["クリーンベンチ（右）","クリーンベンチ（左）"];
 const FREQ_OPTIONS = ["溜まったら","随時","汚くなったら","週1","月1","年1","年2"];
 
@@ -131,6 +102,7 @@ function makeDefault() {
   return { inventory:DEFAULT_INVENTORY, reagents:[], cleaning:DEFAULT_CLEANING, reservations:{}, members:[] };
 }
 
+// ── App ────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab]           = useState("home");
   const [data, setData]         = useState(null);
@@ -213,6 +185,7 @@ export default function App() {
   );
 }
 
+// ── NameEntry ──────────────────────────────────────────────
 function NameEntry({onSet}) {
   const [val,setVal]=useState("");
   return (
@@ -231,16 +204,24 @@ function NameEntry({onSet}) {
   );
 }
 
+// ── HomeTab ────────────────────────────────────────────────
 function HomeTab({data,setTab}) {
   const today = todayStr();
   const todayRes = [];
   BENCHES.forEach(b=>{
     const slots = data.reservations?.[today]?.[b]||{};
     Object.entries(slots)
-      .sort((a,b)=>{ const [ah,am]=a[0].split(":").map(Number); const [bh,bm]=b[0].split(":").map(Number); return ah*60+am-(bh*60+bm); })
-      .forEach(([key,v])=>todayRes.push({bench:b,time:key,name:v.name,memo:v.memo}));
+      .sort((a,bb)=>{
+        const [ah,am]=a[0].split(":").map(Number);
+        const [bh,bm]=bb[0].split(":").map(Number);
+        return ah*60+am-(bh*60+bm);
+      })
+      .forEach(([key,v])=>todayRes.push({bench:b,time:key,name:v.name,partner:v.partner,memo:v.memo}));
   });
-  const lowAll = [...(data.inventory||[]),...(data.reagents||[])].filter(i=>i.alert>0&&i.stock<=i.alert);
+  const lowAll = [...(data.inventory||[]),...(data.reagents||[])].filter(i=>{
+    if(i.alert==null||i.alert===-1) return false;
+    return i.stock<=i.alert;
+  });
   const freqDays={"週1":7,"月1":30,"年1":365,"年2":730};
   const overdueClean = (data.cleaning||[]).filter(c=>{
     if(!freqDays[c.freq])return false;
@@ -251,7 +232,6 @@ function HomeTab({data,setTab}) {
     <div>
       <div style={S.homeTitle}>🏠 無菌室ダッシュボード</div>
       <div style={S.homeDate}>{today}（{["日","月","火","水","木","金","土"][new Date(today+"T00:00:00").getDay()]}）</div>
-
       {(lowAll.length>0||overdueClean.length>0)&&(
         <div style={S.alertBox}>
           {lowAll.length>0&&<div>
@@ -264,7 +244,6 @@ function HomeTab({data,setTab}) {
           </div>}
         </div>
       )}
-
       <div style={S.homeSection}>
         <div style={S.homeSectionTitle}>🪟 今日のクリーンベンチ予約</div>
         {todayRes.length===0
@@ -273,7 +252,7 @@ function HomeTab({data,setTab}) {
             <div key={i} style={S.homeResItem}>
               <span style={S.homeResBench}>{r.bench.includes("右")?"右":"左"}</span>
               <span style={S.homeResTime}>{r.time}</span>
-              <span style={S.homeResName}>{r.name}</span>
+              <span style={S.homeResName}>{r.name}{r.partner&&r.partner!=="なし"?`・${r.partner}`:""}</span>
               {r.memo&&<span style={S.homeResMemo}>{r.memo}</span>}
             </div>
           ))
@@ -284,49 +263,78 @@ function HomeTab({data,setTab}) {
   );
 }
 
+// ── BenchTab ───────────────────────────────────────────────
 function BenchTab({data,persist,userName,past}) {
   const futureDates = weeksAvailable();
   const historyDates = pastDates();
   const [selDate,setSelDate] = useState(past ? historyDates[0] : todayStr());
   const [modal,setModal]     = useState(null);
-  const slots=[];
-  for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) slots.push({h,m});
 
-function groupByWeek(dates) {
-  return [
-    dates.slice(0,7),
-    dates.slice(7,14)
-  ];
-}
+  // 予約スロットは表示のみ（クリックでモーダル）
+  // 時間指定はモーダル内で行う
 
- const weeks = groupByWeek(
-  past ? historyDates : futureDates
-).slice(0,2);
-  const activeWeek =
-  weeks.find(w=>w.includes(selDate)) || weeks[0];
+  function groupByWeek(dates) {
+    // 月曜始まりで7日ずつ
+    const weeks=[];
+    for(let i=0;i<dates.length;i+=7) weeks.push(dates.slice(i,i+7));
+    return weeks;
+  }
+
+  const weeks = groupByWeek(past ? historyDates : futureDates).slice(0,past?5:2);
+  const activeWeek = weeks.find(w=>w.includes(selDate))||weeks[0];
   const weekLabels = past
-    ? weeks.map(w=>`${[...w].reverse()[0].slice(5).replace("-","/")}週`)
-    : weeks.map((_,i)=>i===0?"今週":"来週");
+    ? weeks.map(w=>`${w[0].slice(5).replace("-","/")}〜`)
+    : ["今週","来週"];
 
-  function getSlot(bench,h,m){return data.reservations?.[selDate]?.[bench]?.[`${h}:${m}`]||null;}
-  function confirmRes(bench,h,m,name,memo){
+  function getSlots(bench) {
+    return data.reservations?.[selDate]?.[bench]||{};
+  }
+
+  // スロット表示用：時間帯ごとにまとめる
+  function getSlotsForDisplay(bench) {
+    const slots = getSlots(bench);
+    // {startKey: {name, partner, memo, endKey}} のマップを作る
+    const entries = Object.entries(slots).sort((a,b)=>{
+      const [ah,am]=a[0].split(":").map(Number);
+      const [bh,bm]=b[0].split(":").map(Number);
+      return ah*60+am-(bh*60+bm);
+    });
+    return entries;
+  }
+
+  function confirmRes(bench,startH,startM,endH,endM,name,partner,memo){
     if(past)return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.reservations[selDate]=nd.reservations[selDate]||{};
     nd.reservations[selDate][bench]=nd.reservations[selDate][bench]||{};
-    nd.reservations[selDate][bench][`${h}:${m}`]={name,memo};
-    persist(nd);setModal(null);
-  }
-  function cancelRes(bench,h,m){
-    if(past)return;
-    const nd=JSON.parse(JSON.stringify(data));
-    if(nd.reservations?.[selDate]?.[bench])delete nd.reservations[selDate][bench][`${h}:${m}`];
+    // startからendまでの全スロットを埋める
+    let h=startH, m=startM;
+    while(h*60+m < endH*60+endM) {
+      nd.reservations[selDate][bench][`${h}:${m}`]={name,partner,memo,startH,startM,endH,endM};
+      m+=10;
+      if(m>=60){m=0;h++;}
+    }
     persist(nd);setModal(null);
   }
 
+  function cancelRes(bench,startH,startM,endH,endM){
+    if(past)return;
+    const nd=JSON.parse(JSON.stringify(data));
+    let h=startH, m=startM;
+    while(h*60+m < endH*60+endM) {
+      if(nd.reservations?.[selDate]?.[bench]) delete nd.reservations[selDate][bench][`${h}:${m}`];
+      m+=10; if(m>=60){m=0;h++;}
+    }
+    persist(nd);setModal(null);
+  }
+
+  // 7:00〜22:50 の全スロット
+  const allSlots=[];
+  for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) allSlots.push({h,m});
+
   return (
     <div>
-      <div style={S.sectionTitle}>{past?"📅 過去の予約履歴（30日分）":"🪟 クリーンベンチ予約"}</div>
+      <div style={S.sectionTitle}>{past?"📅 過去の予約履歴":"🪟 クリーンベンチ予約"}</div>
       {weeks.length>1&&(
         <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
           {weeks.map((wk,wi)=>{
@@ -357,74 +365,174 @@ function groupByWeek(dates) {
           );
         })}
       </div>
-      {BENCHES.map(bench=>(
-        <div key={bench} style={S.benchBlock}>
-          <div style={S.benchLabel}>{bench}</div>
-          <div style={S.slotGrid}>
-            {slots.map(({h,m})=>{
-              const slot=getSlot(bench,h,m);
-              const isMine=slot?.name===userName;
-              return(
-                <div key={`${h}-${m}`}
-                  onClick={()=>!past&&setModal({bench,h,m,existing:slot})}
-                  style={{...S.slot,...(slot?(isMine?S.slotMine:S.slotOther):S.slotEmpty),
-                    cursor:past?"default":"pointer"}}>
-                  <span style={S.slotTime}>{tLabel(h,m)}</span>
-                  {slot&&<span style={S.slotName}>{slot.name}</span>}
-                </div>
-              );
-            })}
+
+      {BENCHES.map(bench=>{
+        const slots = getSlotsForDisplay(bench);
+        // 連続スロットをグループ化
+        const groups=[];
+        let i=0;
+        while(i<slots.length){
+          const [key,val]=slots[i];
+          const groupStart=key;
+          let j=i;
+          // 同じ予約（同じstartH,startM）をまとめる
+          const sH=val.startH??parseInt(key.split(":")[0]);
+          const sM=val.startM??parseInt(key.split(":")[1]);
+          const eH=val.endH??sH; const eM=val.endM??sM+10;
+          groups.push({key:groupStart,val,sH,sM,eH,eM});
+          // endまでスキップ
+          let nh=sH,nm=sM;
+          while(nh*60+nm<eH*60+eM){nm+=10;if(nm>=60){nm=0;nh++;}}
+          // 次のiを探す
+          let nextI=i+1;
+          while(nextI<slots.length){
+            const [nk]=slots[nextI];
+            const [nkh,nkm]=nk.split(":").map(Number);
+            if(nkh*60+nkm>=nh*60+nm) break;
+            nextI++;
+          }
+          i=nextI;
+        }
+
+        return(
+          <div key={bench} style={S.benchBlock}>
+            <div style={S.benchLabel}>{bench}</div>
+            {!past&&(
+              <button style={{...S.smallBtn,marginBottom:10,width:"100%"}}
+                onClick={()=>setModal({bench,mode:"new"})}>
+                ＋ この日に予約を入れる
+              </button>
+            )}
+            {groups.length===0
+              ? <div style={{color:"#9ca3af",fontSize:13,padding:"8px 0"}}>予約なし</div>
+              : groups.map((g,gi)=>{
+                const isMine=g.val.name===userName||(g.val.partner&&g.val.partner===userName);
+                return(
+                  <div key={gi} style={{...S.resCard,...(isMine?S.resCardMine:{})}}
+                    onClick={()=>!past&&setModal({bench,mode:"view",g})}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontWeight:700,color:"#1d4ed8",fontSize:14}}>
+                        {tLabel(g.sH,g.sM)} 〜 {tLabel(g.eH,g.eM)}
+                      </span>
+                      {isMine&&<span style={{fontSize:11,color:"#6b7280"}}>タップでキャンセル</span>}
+                    </div>
+                    <div style={{marginTop:4,fontSize:13,color:"#111827",fontWeight:600}}>
+                      {g.val.name}{g.val.partner&&g.val.partner!=="なし"?` ・ ${g.val.partner}`:""}
+                    </div>
+                    {g.val.memo&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{g.val.memo}</div>}
+                  </div>
+                );
+              })
+            }
           </div>
-        </div>
-      ))}
+        );
+      })}
+
       {modal&&<ReserveModal modal={modal} userName={userName} members={data.members}
-        onConfirm={confirmRes} onCancel={cancelRes} onClose={()=>setModal(null)}/>}
+        selDate={selDate} onConfirm={confirmRes} onCancel={cancelRes} onClose={()=>setModal(null)}/>}
     </div>
   );
 }
 
-function ReserveModal({modal,userName,members,onConfirm,onCancel,onClose}){
-  const {bench,h,m,existing}=modal;
-  const all=[...new Set([userName,...members])];
-  const [name,setName]=useState(existing?.name||userName);
-  const [memo,setMemo]=useState(existing?.memo||"");
-  const isMine=existing?.name===userName;
+// ── ReserveModal ───────────────────────────────────────────
+function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose}){
+  const {bench,mode,g}=modal;
+  const allMembers=[...new Set(["なし",...members.filter(m=>m!==userName)])];
+
+  // 時間の選択肢
+  const timeOptions=[];
+  for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) timeOptions.push({h,m,label:tLabel(h,m)});
+  timeOptions.push({h:23,m:0,label:"23:00"});
+
+  const [name,setName]=useState(userName);
+  const [partner,setPartner]=useState("なし");
+  const [memo,setMemo]=useState("");
+  const [startH,setStartH]=useState(8);
+  const [startM,setStartM]=useState(0);
+  const [endH,setEndH]=useState(9);
+  const [endM,setEndM]=useState(0);
+
+  if(mode==="view"&&g){
+    const isMine=g.val.name===userName||(g.val.partner&&g.val.partner===userName);
+    return(
+      <div style={S.overlay} onClick={onClose}>
+        <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
+          <div style={S.modalTitle}>{bench}</div>
+          <div style={{color:"#6b7280",fontSize:13,marginBottom:12}}>
+            {selDate}　{tLabel(g.sH,g.sM)} 〜 {tLabel(g.eH,g.eM)}
+          </div>
+          <div style={S.existingSlot}>
+            <div>
+              <div style={{color:"#111827",fontWeight:700,fontSize:15}}>
+                {g.val.name}{g.val.partner&&g.val.partner!=="なし"?` ・ ${g.val.partner}`:""}
+              </div>
+              {g.val.memo&&<div style={{color:"#6b7280",fontSize:12,marginTop:4}}>{g.val.memo}</div>}
+            </div>
+          </div>
+          {isMine&&(
+            <button style={{...S.btn,background:"#dc2626",marginTop:12}}
+              onClick={()=>onCancel(bench,g.sH,g.sM,g.eH,g.eM)}>
+              予約をキャンセル
+            </button>
+          )}
+          <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>閉じる</button>
+        </div>
+      </div>
+    );
+  }
+
+  // 新規予約
+  const startTotal=startH*60+startM;
+  const endTotal=endH*60+endM;
+  const valid=endTotal>startTotal;
+
   return(
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
         <div style={S.modalTitle}>{bench}</div>
-        <div style={{color:"#6b7280",fontSize:13,marginBottom:16}}>{tLabel(h,m)}</div>
-        {existing?(
-          <>
-            <div style={S.existingSlot}>
-              <span style={{fontSize:20}}>👤</span>
-              <div>
-                <div style={{color:"#111827",fontWeight:700}}>{existing.name}</div>
-                {existing.memo&&<div style={{color:"#6b7280",fontSize:12}}>{existing.memo}</div>}
-              </div>
-            </div>
-            {isMine&&<button style={{...S.btn,background:"#dc2626",marginTop:12}}
-              onClick={()=>onCancel(bench,h,m)}>予約をキャンセル</button>}
-            <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>閉じる</button>
-          </>
-        ):(
-          <>
-            <label style={S.label}>名前</label>
-            <select style={S.input} value={name} onChange={e=>setName(e.target.value)}>
-              {all.map(n=><option key={n}>{n}</option>)}
-            </select>
-            <label style={S.label}>メモ（任意）</label>
-            <input style={S.input} placeholder="例：継代、トランスフェクション"
-              value={memo} onChange={e=>setMemo(e.target.value)}/>
-            <button style={S.btn} onClick={()=>onConfirm(bench,h,m,name,memo)}>予約する</button>
-            <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>キャンセル</button>
-          </>
-        )}
+        <div style={{color:"#6b7280",fontSize:13,marginBottom:16}}>{selDate}</div>
+
+        <label style={S.label}>開始時間</label>
+        <select style={S.input} value={`${startH}:${startM}`}
+          onChange={e=>{const[h,m]=e.target.value.split(":").map(Number);setStartH(h);setStartM(m);}}>
+          {timeOptions.slice(0,-1).map(t=>(
+            <option key={t.label} value={`${t.h}:${t.m}`}>{t.label}</option>
+          ))}
+        </select>
+
+        <label style={{...S.label,marginTop:8}}>終了時間</label>
+        <select style={S.input} value={`${endH}:${endM}`}
+          onChange={e=>{const[h,m]=e.target.value.split(":").map(Number);setEndH(h);setEndM(m);}}>
+          {timeOptions.map(t=>(
+            <option key={t.label} value={`${t.h}:${t.m}`}>{t.label}</option>
+          ))}
+        </select>
+        {!valid&&<div style={{color:"#dc2626",fontSize:12,marginTop:4}}>終了時間は開始より後にしてください</div>}
+
+        <label style={{...S.label,marginTop:8}}>予約者</label>
+        <select style={S.input} value={name} onChange={e=>setName(e.target.value)}>
+          {[...new Set([userName,...members])].map(n=><option key={n}>{n}</option>)}
+        </select>
+
+        <label style={{...S.label,marginTop:8}}>一緒に使用する人</label>
+        <select style={S.input} value={partner} onChange={e=>setPartner(e.target.value)}>
+          {allMembers.map(n=><option key={n}>{n}</option>)}
+        </select>
+
+        <label style={{...S.label,marginTop:8}}>メモ（任意）</label>
+        <input style={S.input} placeholder="例：細胞名、継代" value={memo} onChange={e=>setMemo(e.target.value)}/>
+
+        <button style={{...S.btn,marginTop:12,opacity:valid?1:0.4}}
+          onClick={()=>valid&&onConfirm(bench,startH,startM,endH,endM,name,partner,memo)}>
+          予約する
+        </button>
+        <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>キャンセル</button>
       </div>
     </div>
   );
 }
 
+// ── InventoryTab ───────────────────────────────────────────
 function InventoryTab({data,persist}){
   const list=data.inventory||[];
   const [editId,setEditId]=useState(null);
@@ -433,6 +541,11 @@ function InventoryTab({data,persist}){
   const [showAdd,setShowAdd]=useState(false);
   const [editingItem,setEditingItem]=useState(null);
   const [newItem,setNewItem]=useState({name:"",unit:"個",isBox:false,perBox:96,stock:0,inUse:0,alert:5});
+
+  function isLowAlert(item){
+    if(item.alert==null||item.alert===-1) return false;
+    return item.stock<=item.alert;
+  }
 
   function applyDelta(id){
     const n=parseFloat(delta); if(isNaN(n)){setEditId(null);return;}
@@ -451,7 +564,7 @@ function InventoryTab({data,persist}){
       unit:newItem.isBox?"箱":newItem.unit, isBox:newItem.isBox,
       perBox:newItem.isBox?parseInt(newItem.perBox)||96:null,
       stock:parseFloat(newItem.stock)||0, inUse:parseInt(newItem.inUse)||0,
-      alert:parseFloat(newItem.alert)||0,
+      alert:newItem.alert===-1?-1:parseFloat(newItem.alert)||0,
     }];
     persist(nd); setShowAdd(false);
     setNewItem({name:"",unit:"個",isBox:false,perBox:96,stock:0,inUse:0,alert:5});
@@ -488,29 +601,39 @@ function InventoryTab({data,persist}){
               <input style={S.input} type="number" value={newItem.stock} onChange={e=>setNewItem({...newItem,stock:e.target.value})}/></div>
             <div style={{flex:1}}><label style={S.label}>使用中</label>
               <input style={S.input} type="number" value={newItem.inUse} onChange={e=>setNewItem({...newItem,inUse:e.target.value})}/></div>
-            <div style={{flex:1}}><label style={S.label}>警告数</label>
-              <input style={S.input} type="number" value={newItem.alert} onChange={e=>setNewItem({...newItem,alert:e.target.value})}/></div>
+            <div style={{flex:1}}>
+              <label style={S.label}>警告数</label>
+              <select style={S.input} value={newItem.alert===-1?"none":newItem.alert}
+                onChange={e=>setNewItem({...newItem,alert:e.target.value==="none"?-1:parseFloat(e.target.value)||0})}>
+                <option value="none">なし(-)</option>
+                {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
           </div>
           <button style={S.btn} onClick={addItem}>追加する</button>
         </div>
       )}
       <div style={S.itemList}>
         {list.map(item=>{
-          const isLow=item.alert>0&&item.stock<=item.alert;
+          const low=isLowAlert(item);
           const isEditSettings=editingItem?.id===item.id;
           const isEdit=editId===item.id;
           const inUse=item.inUse||0;
           return(
-            <div key={item.id} style={{...S.itemCard,...(isLow?S.itemCardLow:{})}}>
+            <div key={item.id} style={{...S.itemCard,...(low?S.itemCardLow:{})}}>
               <div style={S.itemTop}>
                 <div style={{flex:1}}>
-                  <span style={S.itemName}>{isLow&&"⚠️ "}{item.name}</span>
+                  <span style={S.itemName}>{low&&"⚠️ "}{item.name}</span>
                   {item.isBox&&item.perBox&&<span style={S.subLabel}>　1箱={item.perBox}本</span>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{textAlign:"right"}}>
                     <div style={S.itemStock}>{item.stock}<span style={{fontSize:11,color:"#6b7280",marginLeft:2}}>{item.unit}</span></div>
                     {inUse>0&&<div style={{fontSize:11,color:"#ea580c",fontWeight:600}}>使用中 {inUse}{item.unit}</div>}
+                    {(item.alert===-1||item.alert==null)
+                      ?<div style={{fontSize:10,color:"#9ca3af"}}>警告なし</div>
+                      :<div style={{fontSize:10,color:"#9ca3af"}}>警告:{item.alert}{item.unit}以下</div>
+                    }
                   </div>
                   <button style={S.iconBtn} onClick={()=>setEditingItem(isEditSettings?null:{...item})}>⚙️</button>
                 </div>
@@ -567,8 +690,14 @@ function InvSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           <input style={S.input} type="number" value={item.stock} onChange={e=>onChange({...item,stock:parseFloat(e.target.value)||0})}/></div>
         <div style={{flex:1}}><label style={S.label}>使用中</label>
           <input style={S.input} type="number" value={item.inUse||0} onChange={e=>onChange({...item,inUse:parseInt(e.target.value)||0})}/></div>
-        <div style={{flex:1}}><label style={S.label}>警告数</label>
-          <input style={S.input} type="number" value={item.alert} onChange={e=>onChange({...item,alert:parseFloat(e.target.value)||0})}/></div>
+        <div style={{flex:1}}>
+          <label style={S.label}>警告数</label>
+          <select style={S.input} value={item.alert===-1||item.alert==null?"none":item.alert}
+            onChange={e=>onChange({...item,alert:e.target.value==="none"?-1:parseFloat(e.target.value)||0})}>
+            <option value="none">なし(-)</option>
+            {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
       </div>
       <div style={{display:"flex",gap:6}}>
         <button style={{...S.btn,flex:2}} onClick={onSave}>保存</button>
@@ -579,11 +708,17 @@ function InvSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
   );
 }
 
+// ── ReagentTab ─────────────────────────────────────────────
 function ReagentTab({data,persist,userName}){
   const list=data.reagents||[];
   const [showAdd,setShowAdd]=useState(false);
   const [editingItem,setEditingItem]=useState(null);
   const [nv,setNv]=useState({cell:"",name:"",stock:0,inUse:0,openedBy:"",note:"",alert:1,unit:"本"});
+
+  function isLowAlert(item){
+    if(item.alert==null||item.alert===-1) return false;
+    return item.stock<=item.alert;
+  }
 
   function addReagent(){
     if(!nv.name.trim())return;
@@ -592,7 +727,7 @@ function ReagentTab({data,persist,userName}){
       id:"rg_"+Date.now(), cell:nv.cell.trim(), name:nv.name.trim(),
       stock:parseInt(nv.stock)||0, inUse:parseInt(nv.inUse)||0,
       openedBy:nv.openedBy.trim(), note:nv.note.trim(),
-      alert:parseInt(nv.alert)||0, unit:nv.unit||"本",
+      alert:nv.alert===-1?-1:parseInt(nv.alert)||0, unit:nv.unit||"本",
       addedBy:userName, addedAt:todayStr(),
     }];
     persist(nd); setShowAdd(false);
@@ -625,7 +760,7 @@ function ReagentTab({data,persist,userName}){
       </div>
       {showAdd&&(
         <div style={S.addCard}>
-          <input style={S.input} placeholder="細胞名（任意）" value={nv.cell} onChange={e=>setNv({...nv,cell:e.target.value})}/>
+          <input style={S.input} placeholder="細胞名" value={nv.cell} onChange={e=>setNv({...nv,cell:e.target.value})}/>
           <input style={S.input} placeholder="試薬名 *" value={nv.name} onChange={e=>setNv({...nv,name:e.target.value})}/>
           <input style={S.input} placeholder="単位（本、mL、個など）" value={nv.unit} onChange={e=>setNv({...nv,unit:e.target.value})}/>
           <div style={{display:"flex",gap:8}}>
@@ -633,8 +768,14 @@ function ReagentTab({data,persist,userName}){
               <input style={S.input} type="number" value={nv.stock} onChange={e=>setNv({...nv,stock:e.target.value})}/></div>
             <div style={{flex:1}}><label style={S.label}>使用中</label>
               <input style={S.input} type="number" value={nv.inUse} onChange={e=>setNv({...nv,inUse:e.target.value})}/></div>
-            <div style={{flex:1}}><label style={S.label}>警告数</label>
-              <input style={S.input} type="number" value={nv.alert} onChange={e=>setNv({...nv,alert:e.target.value})}/></div>
+            <div style={{flex:1}}>
+              <label style={S.label}>警告数</label>
+              <select style={S.input} value={nv.alert===-1?"none":nv.alert}
+                onChange={e=>setNv({...nv,alert:e.target.value==="none"?-1:parseInt(e.target.value)||0})}>
+                <option value="none">なし(-)</option>
+                {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
           </div>
           <input style={S.input} placeholder="使用者（開封中の場合）" value={nv.openedBy} onChange={e=>setNv({...nv,openedBy:e.target.value})}/>
           <input style={S.input} placeholder="メモ（例：DMEM+10%FBS、-20℃保管）" value={nv.note} onChange={e=>setNv({...nv,note:e.target.value})}/>
@@ -644,10 +785,10 @@ function ReagentTab({data,persist,userName}){
       {list.length===0&&<div style={S.empty}>試薬が登録されていません</div>}
       <div style={S.itemList}>
         {list.map(item=>{
-          const isLow=item.alert>0&&item.stock<=item.alert;
+          const low=isLowAlert(item);
           const isEditSettings=editingItem?.id===item.id;
           return(
-            <ReagentCard key={item.id} item={item} isLow={isLow} isEditSettings={isEditSettings}
+            <ReagentCard key={item.id} item={item} isLow={low} isEditSettings={isEditSettings}
               editingItem={editingItem} setEditingItem={setEditingItem}
               onSave={()=>saveEdit(item.id,editingItem)} onRemove={()=>removeItem(item.id)}
               onAdjust={adjustStock}/>
@@ -720,8 +861,14 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           <input style={S.input} type="number" value={item.stock} onChange={e=>onChange({...item,stock:parseInt(e.target.value)||0})}/></div>
         <div style={{flex:1}}><label style={S.label}>使用中</label>
           <input style={S.input} type="number" value={item.inUse||0} onChange={e=>onChange({...item,inUse:parseInt(e.target.value)||0})}/></div>
-        <div style={{flex:1}}><label style={S.label}>警告数</label>
-          <input style={S.input} type="number" value={item.alert||0} onChange={e=>onChange({...item,alert:parseInt(e.target.value)||0})}/></div>
+        <div style={{flex:1}}>
+          <label style={S.label}>警告数</label>
+          <select style={S.input} value={item.alert===-1||item.alert==null?"none":item.alert}
+            onChange={e=>onChange({...item,alert:e.target.value==="none"?-1:parseInt(e.target.value)||0})}>
+            <option value="none">なし(-)</option>
+            {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
       </div>
       <div><label style={S.label}>使用者（開封中）</label>
         <input style={S.input} value={item.openedBy||""} onChange={e=>onChange({...item,openedBy:e.target.value})}/></div>
@@ -736,9 +883,11 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
   );
 }
 
+// ── CleaningTab ────────────────────────────────────────────
 function CleaningTab({data,persist,userName}){
   const [activeId,setActiveId]=useState(null);
   const [note,setNote]=useState("");
+  const [coWorker,setCoWorker]=useState("なし");
   const [editLog,setEditLog]=useState(null);
   const [editLogNote,setEditLogNote]=useState("");
   const [showAddItem,setShowAddItem]=useState(false);
@@ -747,12 +896,14 @@ function CleaningTab({data,persist,userName}){
   const freqOrder={"溜まったら":0,"汚くなったら":1,"随時":2,"週1":3,"月1":4,"年1":5,"年2":6};
   const freqDays={"週1":7,"月1":30,"年1":365,"年2":730};
   const sorted=[...(data.cleaning||[])].sort((a,b)=>(freqOrder[a.freq]??9)-(freqOrder[b.freq]??9));
+  const allMembers=["なし",...(data.members||[]).filter(m=>m!==userName)];
 
   function logItem(id){
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===id); if(!item)return;
-    item.log=[{id:"l"+Date.now(),date:today,who:userName,note},...(item.log||[])];
-    persist(nd); setActiveId(null); setNote("");
+    const whoStr=coWorker&&coWorker!=="なし"?`${userName}・${coWorker}`:userName;
+    item.log=[{id:"l"+Date.now(),date:today,who:whoStr,note},...(item.log||[])];
+    persist(nd); setActiveId(null); setNote(""); setCoWorker("なし");
   }
   function deleteLog(cleanId,logId){
     const nd=JSON.parse(JSON.stringify(data));
@@ -807,7 +958,7 @@ function CleaningTab({data,persist,userName}){
                   <span style={S.freqBadge}>{item.freq}</span>
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <button style={S.doneBtn} onClick={()=>{setActiveId(isActive?null:item.id);setNote("");}}>
+                  <button style={S.doneBtn} onClick={()=>{setActiveId(isActive?null:item.id);setNote("");setCoWorker("なし");}}>
                     {isActive?"✕":"✓ やった"}
                   </button>
                   <button style={{...S.iconBtn,fontSize:12,padding:"4px 8px",color:"#dc2626"}}
@@ -818,7 +969,13 @@ function CleaningTab({data,persist,userName}){
                 {last?`最終：${last.date}（${days===0?"今日":`${days}日前`}）　${last.who}${last.note?`「${last.note}」`:""}` :"まだ記録なし"}
               </div>
               {isActive&&(
-                <div style={{marginTop:8}}>
+                <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
+                  <div>
+                    <label style={S.label}>一緒にした人</label>
+                    <select style={S.input} value={coWorker} onChange={e=>setCoWorker(e.target.value)}>
+                      {allMembers.map(m=><option key={m}>{m}</option>)}
+                    </select>
+                  </div>
                   <input style={S.input} placeholder="メモ（任意）" value={note} onChange={e=>setNote(e.target.value)}/>
                   <button style={S.btn} onClick={()=>logItem(item.id)}>記録する</button>
                 </div>
@@ -860,6 +1017,7 @@ function CleaningTab({data,persist,userName}){
   );
 }
 
+// ── Styles ─────────────────────────────────────────────────
 const S={
   root:{minHeight:"100vh",background:"#f9fafb",fontFamily:"'Noto Sans JP','Hiragino Sans',sans-serif",color:"#111827",paddingBottom:80},
   center:{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f9fafb"},
@@ -893,13 +1051,8 @@ const S={
   weekBtnActive:{background:"#eff6ff",border:"2px solid #1d4ed8",color:"#1d4ed8",fontWeight:700},
   benchBlock:{marginBottom:20},
   benchLabel:{color:"#111827",fontSize:14,fontWeight:700,marginBottom:8,borderLeft:"3px solid #1d4ed8",paddingLeft:8},
-  slotGrid:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:3},
-  slot:{padding:"6px 2px",borderRadius:6,display:"flex",flexDirection:"column",alignItems:"center",minHeight:44,border:"1px solid transparent"},
-  slotEmpty:{background:"#f9fafb",border:"1px solid #e5e7eb",cursor:"pointer"},
-  slotMine:{background:"#eff6ff",border:"2px solid #1d4ed8",cursor:"pointer"},
-  slotOther:{background:"#fff7ed",border:"2px solid #f97316",cursor:"pointer"},
-  slotTime:{fontSize:9,color:"#9ca3af"},
-  slotName:{fontSize:9,fontWeight:700,color:"#111827",marginTop:2,textAlign:"center",wordBreak:"break-all",lineHeight:1.2},
+  resCard:{background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:6,cursor:"pointer"},
+  resCardMine:{background:"#eff6ff",border:"1px solid #bfdbfe"},
   overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200},
   modalCard:{background:"#fff",borderRadius:"16px 16px 0 0",padding:24,width:"100%",maxWidth:480,paddingBottom:40,boxShadow:"0 -4px 20px rgba(0,0,0,0.1)"},
   modalTitle:{fontSize:17,fontWeight:700,color:"#111827",marginBottom:4},
