@@ -270,9 +270,6 @@ function BenchTab({data,persist,userName,past}) {
   const [selDate,setSelDate] = useState(past ? historyDates[0] : todayStr());
   const [modal,setModal]     = useState(null);
 
-  // 予約スロットは表示のみ（クリックでモーダル）
-  // 時間指定はモーダル内で行う
-
   function groupByWeek(dates) {
     // 月曜始まりで7日ずつ
     const weeks=[];
@@ -366,67 +363,26 @@ function BenchTab({data,persist,userName,past}) {
         })}
       </div>
 
-      {BENCHES.map(bench=>{
-        const slots = getSlotsForDisplay(bench);
-        // 連続スロットをグループ化
-        const groups=[];
-        let i=0;
-        while(i<slots.length){
-          const [key,val]=slots[i];
-          const groupStart=key;
-          let j=i;
-          // 同じ予約（同じstartH,startM）をまとめる
-          const sH=val.startH??parseInt(key.split(":")[0]);
-          const sM=val.startM??parseInt(key.split(":")[1]);
-          const eH=val.endH??sH; const eM=val.endM??sM+10;
-          groups.push({key:groupStart,val,sH,sM,eH,eM});
-          // endまでスキップ
-          let nh=sH,nm=sM;
-          while(nh*60+nm<eH*60+eM){nm+=10;if(nm>=60){nm=0;nh++;}}
-          // 次のiを探す
-          let nextI=i+1;
-          while(nextI<slots.length){
-            const [nk]=slots[nextI];
-            const [nkh,nkm]=nk.split(":").map(Number);
-            if(nkh*60+nkm>=nh*60+nm) break;
-            nextI++;
-          }
-          i=nextI;
-        }
-
-        return(
-          <div key={bench} style={S.benchBlock}>
-            <div style={S.benchLabel}>{bench}</div>
-            {!past&&(
-              <button style={{...S.smallBtn,marginBottom:10,width:"100%"}}
-                onClick={()=>setModal({bench,mode:"new"})}>
-                ＋ この日に予約を入れる
-              </button>
-            )}
-            {groups.length===0
-              ? <div style={{color:"#9ca3af",fontSize:13,padding:"8px 0"}}>予約なし</div>
-              : groups.map((g,gi)=>{
-                const isMine=g.val.name===userName||(g.val.partner&&g.val.partner===userName);
-                return(
-                  <div key={gi} style={{...S.resCard,...(isMine?S.resCardMine:{})}}
-                    onClick={()=>!past&&setModal({bench,mode:"view",g})}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontWeight:700,color:"#1d4ed8",fontSize:14}}>
-                        {tLabel(g.sH,g.sM)} 〜 {tLabel(g.eH,g.eM)}
-                      </span>
-                      {isMine&&<span style={{fontSize:11,color:"#6b7280"}}>タップでキャンセル</span>}
-                    </div>
-                    <div style={{marginTop:4,fontSize:13,color:"#111827",fontWeight:600}}>
-                      {g.val.name}{g.val.partner&&g.val.partner!=="なし"?` ・ ${g.val.partner}`:""}
-                    </div>
-                    {g.val.memo&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{g.val.memo}</div>}
-                  </div>
-                );
-              })
-            }
+      {BENCHES.map(bench=>(
+        <div key={bench} style={S.benchBlock}>
+          <div style={S.benchLabel}>{bench}</div>
+          <div style={S.slotGrid}>
+            {allSlots.map(({h,m})=>{
+              const slot=data.reservations?.[selDate]?.[bench]?.[`${h}:${m}`]||null;
+              const isMine=slot?.name===userName||(slot?.partner&&slot?.partner===userName);
+              return(
+                <div key={`${h}-${m}`}
+                  onClick={()=>!past&&setModal({bench,h,m,existing:slot})}
+                  style={{...S.slot,...(slot?(isMine?S.slotMine:S.slotOther):S.slotEmpty),
+                    cursor:past?"default":"pointer"}}>
+                  <span style={S.slotTime}>{tLabel(h,m)}</span>
+                  {slot&&<span style={S.slotName}>{slot.name}{slot.partner&&slot.partner!=="なし"?`・${slot.partner}`:""}</span>}
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
+        </div>
+      ))}
 
       {modal&&<ReserveModal modal={modal} userName={userName} members={data.members}
         selDate={selDate} onConfirm={confirmRes} onCancel={cancelRes} onClose={()=>setModal(null)}/>}
@@ -436,42 +392,41 @@ function BenchTab({data,persist,userName,past}) {
 
 // ── ReserveModal ───────────────────────────────────────────
 function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose}){
-  const {bench,mode,g}=modal;
-  const allMembers=[...new Set(["なし",...members.filter(m=>m!==userName)])];
+  const {bench,h,m,existing}=modal;
+  const allMembers=[...new Set(["なし",...members.filter(mn=>mn!==userName)])];
 
-  // 時間の選択肢
   const timeOptions=[];
-  for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) timeOptions.push({h,m,label:tLabel(h,m)});
+  for(let th=7;th<23;th++) for(let tm=0;tm<60;tm+=10) timeOptions.push({h:th,m:tm,label:tLabel(th,tm)});
   timeOptions.push({h:23,m:0,label:"23:00"});
 
-  const [name,setName]=useState(userName);
-  const [partner,setPartner]=useState("なし");
-  const [memo,setMemo]=useState("");
-  const [startH,setStartH]=useState(8);
-  const [startM,setStartM]=useState(0);
-  const [endH,setEndH]=useState(9);
-  const [endM,setEndM]=useState(0);
+  const [name,setName]=useState(existing?.name||userName);
+  const [partner,setPartner]=useState(existing?.partner||"なし");
+  const [memo,setMemo]=useState(existing?.memo||"");
+  const [useEndTime,setUseEndTime]=useState(false);
+  const defaultEndM=(m+10)>=60?0:m+10;
+  const defaultEndH=(m+10)>=60?h+1:h;
+  const [endH,setEndH]=useState(existing?.endH||defaultEndH);
+  const [endM,setEndM]=useState(existing?.endM||defaultEndM);
 
-  if(mode==="view"&&g){
-    const isMine=g.val.name===userName||(g.val.partner&&g.val.partner===userName);
+  const isMine=existing?.name===userName||(existing?.partner&&existing?.partner===userName);
+
+  if(existing){
     return(
       <div style={S.overlay} onClick={onClose}>
         <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
           <div style={S.modalTitle}>{bench}</div>
-          <div style={{color:"#6b7280",fontSize:13,marginBottom:12}}>
-            {selDate}　{tLabel(g.sH,g.sM)} 〜 {tLabel(g.eH,g.eM)}
-          </div>
+          <div style={{color:"#6b7280",fontSize:13,marginBottom:12}}>{tLabel(h,m)}</div>
           <div style={S.existingSlot}>
             <div>
               <div style={{color:"#111827",fontWeight:700,fontSize:15}}>
-                {g.val.name}{g.val.partner&&g.val.partner!=="なし"?` ・ ${g.val.partner}`:""}
+                {existing.name}{existing.partner&&existing.partner!=="なし"?` ・ ${existing.partner}`:""}
               </div>
-              {g.val.memo&&<div style={{color:"#6b7280",fontSize:12,marginTop:4}}>{g.val.memo}</div>}
+              {existing.memo&&<div style={{color:"#6b7280",fontSize:12,marginTop:4}}>{existing.memo}</div>}
             </div>
           </div>
           {isMine&&(
             <button style={{...S.btn,background:"#dc2626",marginTop:12}}
-              onClick={()=>onCancel(bench,g.sH,g.sM,g.eH,g.eM)}>
+              onClick={()=>onCancel(bench,existing.startH??h,existing.startM??m,existing.endH??h,existing.endM??(m+10>=60?m+10-60:m+10))}>
               予約をキャンセル
             </button>
           )}
@@ -481,35 +436,35 @@ function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose
     );
   }
 
-  // 新規予約
-  const startTotal=startH*60+startM;
   const endTotal=endH*60+endM;
-  const valid=endTotal>startTotal;
+  const startTotal=h*60+m;
+  const valid=!useEndTime||(endTotal>startTotal);
 
   return(
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
         <div style={S.modalTitle}>{bench}</div>
-        <div style={{color:"#6b7280",fontSize:13,marginBottom:16}}>{selDate}</div>
+        <div style={{color:"#6b7280",fontSize:13,marginBottom:12}}>{tLabel(h,m)}〜（10分）</div>
 
-        <label style={S.label}>開始時間</label>
-        <select style={S.input} value={`${startH}:${startM}`}
-          onChange={e=>{const[h,m]=e.target.value.split(":").map(Number);setStartH(h);setStartM(m);}}>
-          {timeOptions.slice(0,-1).map(t=>(
-            <option key={t.label} value={`${t.h}:${t.m}`}>{t.label}</option>
-          ))}
-        </select>
+        <label style={{...S.label,display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12}}>
+          <input type="checkbox" checked={useEndTime} onChange={e=>setUseEndTime(e.target.checked)}/>
+          終了時間を指定する（長時間予約）
+        </label>
 
-        <label style={{...S.label,marginTop:8}}>終了時間</label>
-        <select style={S.input} value={`${endH}:${endM}`}
-          onChange={e=>{const[h,m]=e.target.value.split(":").map(Number);setEndH(h);setEndM(m);}}>
-          {timeOptions.map(t=>(
-            <option key={t.label} value={`${t.h}:${t.m}`}>{t.label}</option>
-          ))}
-        </select>
-        {!valid&&<div style={{color:"#dc2626",fontSize:12,marginTop:4}}>終了時間は開始より後にしてください</div>}
+        {useEndTime&&(
+          <div style={{marginBottom:12}}>
+            <label style={S.label}>終了時間</label>
+            <select style={S.input} value={`${endH}:${endM}`}
+              onChange={e=>{const[th,tm]=e.target.value.split(":").map(Number);setEndH(th);setEndM(tm);}}>
+              {timeOptions.map(t=>(
+                <option key={t.label} value={`${t.h}:${t.m}`}>{t.label}</option>
+              ))}
+            </select>
+            {!valid&&<div style={{color:"#dc2626",fontSize:12,marginTop:4}}>終了時間は開始より後にしてください</div>}
+          </div>
+        )}
 
-        <label style={{...S.label,marginTop:8}}>予約者</label>
+        <label style={S.label}>予約者</label>
         <select style={S.input} value={name} onChange={e=>setName(e.target.value)}>
           {[...new Set([userName,...members])].map(n=><option key={n}>{n}</option>)}
         </select>
@@ -523,7 +478,12 @@ function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose
         <input style={S.input} placeholder="例：細胞名、継代" value={memo} onChange={e=>setMemo(e.target.value)}/>
 
         <button style={{...S.btn,marginTop:12,opacity:valid?1:0.4}}
-          onClick={()=>valid&&onConfirm(bench,startH,startM,endH,endM,name,partner,memo)}>
+          onClick={()=>{
+            if(!valid)return;
+            const actualEndH=useEndTime?endH:(m+10>=60?h+1:h);
+            const actualEndM=useEndTime?endM:(m+10>=60?(m+10-60):m+10);
+            onConfirm(bench,h,m,actualEndH,actualEndM,name,partner,memo);
+          }}>
           予約する
         </button>
         <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>キャンセル</button>
@@ -606,7 +566,7 @@ function InventoryTab({data,persist}){
               <select style={S.input} value={newItem.alert===-1?"none":newItem.alert}
                 onChange={e=>setNewItem({...newItem,alert:e.target.value==="none"?-1:parseFloat(e.target.value)||0})}>
                 <option value="none">なし(-)</option>
-                {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+                {[0,1,2,3,4,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
               </select>
             </div>
           </div>
@@ -695,7 +655,7 @@ function InvSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           <select style={S.input} value={item.alert===-1||item.alert==null?"none":item.alert}
             onChange={e=>onChange({...item,alert:e.target.value==="none"?-1:parseFloat(e.target.value)||0})}>
             <option value="none">なし(-)</option>
-            {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+            {[0,1,2,3,4,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
           </select>
         </div>
       </div>
@@ -773,7 +733,7 @@ function ReagentTab({data,persist,userName}){
               <select style={S.input} value={nv.alert===-1?"none":nv.alert}
                 onChange={e=>setNv({...nv,alert:e.target.value==="none"?-1:parseInt(e.target.value)||0})}>
                 <option value="none">なし(-)</option>
-                {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+                {[0,1,2,3,4,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
               </select>
             </div>
           </div>
@@ -866,7 +826,7 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           <select style={S.input} value={item.alert===-1||item.alert==null?"none":item.alert}
             onChange={e=>onChange({...item,alert:e.target.value==="none"?-1:parseInt(e.target.value)||0})}>
             <option value="none">なし(-)</option>
-            {[0,1,2,3,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+            {[0,1,2,3,4,5,10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
           </select>
         </div>
       </div>
