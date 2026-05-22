@@ -304,12 +304,20 @@ function BenchTab({data,persist,userName,past}) {
     const nd=JSON.parse(JSON.stringify(data));
     nd.reservations[selDate]=nd.reservations[selDate]||{};
     nd.reservations[selDate][bench]=nd.reservations[selDate][bench]||{};
-    // startからendまでの全スロットを埋める
+    // 既存の予約と重複チェック
     let h=startH, m=startM;
     while(h*60+m < endH*60+endM) {
+      if(nd.reservations[selDate][bench][`${h}:${m}`]) {
+        alert(`${tLabel(h,m)} はすでに予約が入っています`);
+        return;
+      }
+      m+=10; if(m>=60){m=0;h++;}
+    }
+    // 重複なければ登録
+    h=startH; m=startM;
+    while(h*60+m < endH*60+endM) {
       nd.reservations[selDate][bench][`${h}:${m}`]={name,partner,memo,startH,startM,endH,endM};
-      m+=10;
-      if(m>=60){m=0;h++;}
+      m+=10; if(m>=60){m=0;h++;}
     }
     persist(nd);setModal(null);
   }
@@ -933,7 +941,7 @@ function CleaningTab({data,persist,userName}){
                 <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
                   <div>
                     <label style={S.label}>日付</label>
-                    <input style={S.input} type="date" value={logDate} onChange={e=>setLogDate(e.target.value)}/>
+                    <input style={{...S.input,boxSizing:"border-box",width:"100%"}} type="date" value={logDate} onChange={e=>setLogDate(e.target.value)}/>
                   </div>
                   <div>
                     <label style={S.label}>一緒にした人（任意）</label>
