@@ -1010,6 +1010,7 @@ const S={
   weekBtn:{padding:"7px 14px",background:"#fff",border:"1px solid #d1d5db",borderRadius:8,color:"#374151",fontSize:12,cursor:"pointer",fontFamily:"inherit"},
   weekBtnActive:{background:"#eff6ff",border:"2px solid #1d4ed8",color:"#1d4ed8",fontWeight:700},
   benchBlock:{marginBottom:20},
+  slotGrid:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:3},
   benchLabel:{color:"#111827",fontSize:14,fontWeight:700,marginBottom:8,borderLeft:"3px solid #1d4ed8",paddingLeft:8},
   resCard:{background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:6,cursor:"pointer"},
   resCardMine:{background:"#eff6ff",border:"1px solid #bfdbfe"},
