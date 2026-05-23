@@ -544,6 +544,7 @@ function InventoryTab({data,persist}){
     persist(nd); setEditingItem(null);
   }
   function removeItem(id){
+    if(!window.confirm("本当に削除しますか？")) return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.inventory=nd.inventory.filter(i=>i.id!==id); persist(nd); setEditingItem(null);
   }
@@ -707,6 +708,7 @@ function ReagentTab({data,persist,userName}){
     Object.assign(item,changes); persist(nd); setEditingItem(null);
   }
   function removeItem(id){
+    if(!window.confirm("本当に削除しますか？")) return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.reagents=(nd.reagents||[]).filter(i=>i.id!==id); persist(nd); setEditingItem(null);
   }
@@ -875,6 +877,7 @@ function CleaningTab({data,persist,userName}){
     persist(nd); setActiveId(null); setNote(""); setCoWorker(""); setLogDate(todayStr());
   }
   function deleteLog(cleanId,logId){
+    if(!window.confirm("この記録を削除しますか？")) return;
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===cleanId); if(!item)return;
     item.log=item.log.filter(l=>l.id!==logId); persist(nd);
@@ -893,6 +896,7 @@ function CleaningTab({data,persist,userName}){
     persist(nd); setShowAddItem(false); setNewClean({name:"",freq:"溜まったら"});
   }
   function removeCleanItem(id){
+    if(!window.confirm("本当に削除しますか？")) return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.cleaning=nd.cleaning.filter(c=>c.id!==id); persist(nd);
   }
