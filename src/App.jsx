@@ -27,7 +27,6 @@ async function saveData(data) {
   } catch(e) { console.error(e); }
 }
 
-// 毎回 new Date() で今日を取得（キャッシュなし）
 function todayStr() {
   const now = new Date();
   return `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
@@ -59,7 +58,6 @@ function weeksAvailable() {
 function pastDates() {
   const now = new Date();
   const todayISO = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  // 過去30日を月曜始まりで並べる（古い順）
   const dates = [];
   for (let i = 30; i >= 1; i--) {
     const d = new Date(todayISO+"T00:00:00");
@@ -70,7 +68,7 @@ function pastDates() {
 }
 
 const DEFAULT_INVENTORY = [
-  { id:"chip1000", name:"チップ 1000µL", unit:"箱", isBox:true,  perBox:96,  stock:0, inUse:0, alert:2 },
+  { id:"chip1000", name:"チップ 1000µL", unit:"箱", isBox:true,  perBox:96,  stock:0, inUse:0, alert:2, location:"" },
   { id:"chip200",  name:"チップ 200µL",  unit:"箱", isBox:true,  perBox:96,  stock:0, inUse:0, alert:2 },
   { id:"chip10",   name:"チップ 10µL",   unit:"箱", isBox:true,  perBox:96,  stock:0, inUse:0, alert:2 },
   { id:"plate96",  name:"96-well plate", unit:"枚", isBox:false, perBox:null,stock:0, inUse:0, alert:5 },
@@ -84,22 +82,22 @@ const DEFAULT_INVENTORY = [
   { id:"haiter",   name:"ハイター",      unit:"本", isBox:false, perBox:null,stock:0, inUse:0, alert:1 },
 ];
 const DEFAULT_CLEANING = [
-  { id:"p_trash",  name:"プラごみAC",             freq:"溜まったら", log:[] },
-  { id:"k_trash",  name:"紙ごみAC",               freq:"溜まったら", log:[] },
-  { id:"g_trash",  name:"手袋ごみAC",             freq:"溜まったら", log:[] },
-  { id:"floor",    name:"床クイックワイパー",     freq:"週1",        log:[] },
-  { id:"incub_w",  name:"インキュベーター水替え", freq:"月1",        log:[] },
-  { id:"sink",     name:"流しの掃除",             freq:"月1",        log:[] },
-  { id:"aspirate", name:"アスピレーター廃液",     freq:"溜まったら", log:[] },
-  { id:"cbench",   name:"クリーンベンチ掃除",     freq:"年2",        log:[] },
-  { id:"incub_t",  name:"恒温槽掃除",             freq:"年2",        log:[] },
-  { id:"sterilize",name:"オートクレーブ滅菌",     freq:"随時",       log:[] },
+  { id:"p_trash",  name:"プラごみAC",             freq:"溜まったら", steps:"", log:[] },
+  { id:"k_trash",  name:"紙ごみAC",               freq:"溜まったら", steps:"", log:[] },
+  { id:"g_trash",  name:"手袋ごみAC",             freq:"溜まったら", steps:"", log:[] },
+  { id:"floor",    name:"床クイックワイパー",     freq:"週1",        steps:"", log:[] },
+  { id:"incub_w",  name:"インキュベーター水替え", freq:"月1",        steps:"", log:[] },
+  { id:"sink",     name:"流しの掃除",             freq:"月1",        steps:"排水溝ハイター、シンクをスポンジで磨く", log:[] },
+  { id:"aspirate", name:"アスピレーター廃液",     freq:"溜まったら", steps:"4FのmiliQの部屋の流しへ。ボトル汚れていればハイター漬け置き", log:[] },
+  { id:"cbench",   name:"クリーンベンチ掃除",     freq:"年2",        steps:"", log:[] },
+  { id:"incub_t",  name:"恒温槽掃除",             freq:"年2",        steps:"機械部分はカビキラーをかけて1〜2分後に洗い流す", log:[] },
+  { id:"sterilize",name:"オートクレーブ滅菌",     freq:"随時",       steps:"", log:[] },
 ];
 const BENCHES = ["クリーンベンチ（右）","クリーンベンチ（左）"];
 const FREQ_OPTIONS = ["溜まったら","随時","汚くなったら","週1","月1","年1","年2"];
 
 function makeDefault() {
-  return { inventory:DEFAULT_INVENTORY, reagents:[], cleaning:DEFAULT_CLEANING, reservations:{}, members:[] };
+  return { inventory:DEFAULT_INVENTORY, reagents:[], cleaning:DEFAULT_CLEANING, reservations:{}, members:["飴野"] };
 }
 
 // ── App ────────────────────────────────────────────────────
@@ -109,6 +107,7 @@ export default function App() {
   const [loading, setLoading]   = useState(true);
   const [userName, setUserName] = useState("");
   const [nameSet, setNameSet]   = useState(false);
+  const [showMemberModal, setShowMemberModal] = useState(false);
   const lastFetch = useRef(0);
 
   const persist = useCallback((nd) => { setData(nd); saveData(nd); }, []);
@@ -124,12 +123,10 @@ export default function App() {
   useEffect(() => {
     loadData().then(d => { setData(d || makeDefault()); setLoading(false); });
   }, []);
-
   useEffect(() => {
     const id = setInterval(() => fetchData(), 30000);
     return () => clearInterval(id);
   }, [fetchData]);
-
   useEffect(() => {
     const h = () => { if (document.visibilityState==="visible") fetchData(true); };
     document.addEventListener("visibilitychange", h);
@@ -137,16 +134,14 @@ export default function App() {
   }, [fetchData]);
 
   if (loading) return (
-    <div style={S.center}>
-      <div style={S.spinner}/>
+    <div style={S.center}><div style={S.spinner}/>
       <span style={{color:"#1d4ed8",fontFamily:"monospace",marginTop:12}}>読み込み中...</span>
     </div>
   );
 
   if (!nameSet) return (
-    <NameEntry onSet={name=>{
+    <NameEntry members={data.members||[]} onSet={name=>{
       setUserName(name); setNameSet(true);
-      if (!data.members.includes(name)) persist({...data,members:[...data.members,name]});
     }}/>
   );
 
@@ -163,7 +158,10 @@ export default function App() {
     <div style={S.root}>
       <header style={S.header}>
         <span style={S.headerTitle}>🧪 無菌室管理</span>
-        <span style={S.headerUser}>👤 {userName}</span>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <span style={S.headerUser}>👤 {userName}</span>
+          <button style={S.editBtn} onClick={()=>setShowMemberModal(true)}>編集</button>
+        </div>
       </header>
       <nav style={S.nav}>
         {TABS.map(t=>(
@@ -181,24 +179,122 @@ export default function App() {
         {tab==="reagent"   && <ReagentTab   data={data} persist={persist} userName={userName}/>}
         {tab==="cleaning"  && <CleaningTab  data={data} persist={persist} userName={userName}/>}
       </main>
+      {showMemberModal && <MemberModal data={data} persist={persist} onClose={()=>setShowMemberModal(false)}/>}
     </div>
   );
 }
 
-// ── NameEntry ──────────────────────────────────────────────
-function NameEntry({onSet}) {
-  const [val,setVal]=useState("");
+// ── NameEntry（登録メンバーのみ選択可）─────────────────────
+function NameEntry({members, onSet}) {
+  const [val, setVal] = useState("");
+  const [error, setError] = useState("");
+
+  function handleEnter() {
+    const trimmed = val.trim();
+    if (!trimmed) { setError("苗字を入力してください"); return; }
+    if (members.length > 0 && !members.includes(trimmed)) {
+      setError("登録されていない苗字です。メンバー登録が必要です。");
+      return;
+    }
+    onSet(trimmed);
+  }
+
   return (
     <div style={S.center}>
       <div style={S.nameCard}>
         <div style={{fontSize:44,marginBottom:8}}>🧪</div>
         <h2 style={{color:"#1d4ed8",margin:"0 0 6px",fontFamily:"monospace"}}>無菌室管理アプリ</h2>
-        <p style={{color:"#64748b",fontSize:13,margin:"0 0 20px"}}>お名前を入力してください</p>
+        <p style={{color:"#64748b",fontSize:13,margin:"0 0 20px"}}>苗字を入力してください</p>
         <input style={S.nameInput} placeholder="例：飴野" value={val}
-          onChange={e=>setVal(e.target.value)}
-          onKeyDown={e=>e.key==="Enter"&&val.trim()&&onSet(val.trim())} autoFocus/>
-        <button style={{...S.btn,opacity:val.trim()?1:0.4}}
-          onClick={()=>val.trim()&&onSet(val.trim())}>入る</button>
+          onChange={e=>{setVal(e.target.value);setError("");}}
+          onKeyDown={e=>e.key==="Enter"&&handleEnter()} autoFocus/>
+        {error && <div style={{color:"#dc2626",fontSize:12,marginBottom:8,textAlign:"center"}}>{error}</div>}
+        <button style={{...S.btn,opacity:val.trim()?1:0.4}} onClick={handleEnter}>入る</button>
+        <p style={{color:"#9ca3af",fontSize:11,marginTop:12,textAlign:"center"}}>
+          ※メンバー登録は右上「編集」から
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── MemberModal ────────────────────────────────────────────
+function MemberModal({data, persist, onClose}) {
+  const [mode, setMode] = useState("menu"); // menu | list | add
+  const [newName, setNewName] = useState("");
+  const [editMode, setEditMode] = useState(false);
+
+  function addMember() {
+    if (!newName.trim()) return;
+    if ((data.members||[]).includes(newName.trim())) {
+      alert("すでに登録されている苗字です");
+      return;
+    }
+    const nd = JSON.parse(JSON.stringify(data));
+    nd.members = [...(nd.members||[]), newName.trim()];
+    persist(nd);
+    setNewName("");
+    setMode("list");
+  }
+
+  function removeMember(name) {
+    if (!window.confirm(`「${name}」を削除しますか？`)) return;
+    const nd = JSON.parse(JSON.stringify(data));
+    nd.members = nd.members.filter(m=>m!==name);
+    persist(nd);
+  }
+
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
+        {mode==="menu" && (
+          <>
+            <div style={S.modalTitle}>編集メニュー</div>
+            <button style={{...S.btn,marginTop:16}} onClick={()=>setMode("list")}>👥 メンバー管理</button>
+            <button style={{...S.btnOutline,marginTop:8}} onClick={onClose}>閉じる</button>
+          </>
+        )}
+        {mode==="list" && (
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+              <div style={S.modalTitle}>メンバー一覧</div>
+              <div style={{display:"flex",gap:6}}>
+                <button style={S.smallBtn} onClick={()=>setMode("add")}>＋ 登録</button>
+                <button style={{...S.smallBtn,background:editMode?"#dc2626":"#6b7280"}}
+                  onClick={()=>setEditMode(!editMode)}>
+                  {editMode?"完了":"編集"}
+                </button>
+              </div>
+            </div>
+            {(data.members||[]).length===0
+              ? <div style={S.empty}>メンバーが登録されていません</div>
+              : <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {(data.members||[]).map(m=>(
+                    <div key={m} style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+                      background:"#f9fafb",borderRadius:8,padding:"10px 14px",border:"1px solid #e5e7eb"}}>
+                      <span style={{fontSize:15,fontWeight:600,color:"#111827"}}>👤 {m}</span>
+                      {editMode && (
+                        <button style={{...S.iconBtn,color:"#dc2626",padding:"4px 10px"}}
+                          onClick={()=>removeMember(m)}>－</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+            }
+            <button style={{...S.btnOutline,marginTop:16}} onClick={()=>{setMode("menu");setEditMode(false);}}>戻る</button>
+          </>
+        )}
+        {mode==="add" && (
+          <>
+            <div style={S.modalTitle}>メンバー登録</div>
+            <label style={{...S.label,marginTop:16}}>苗字</label>
+            <input style={S.input} placeholder="例：飴野" value={newName}
+              onChange={e=>setNewName(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addMember()} autoFocus/>
+            <button style={{...S.btn,marginTop:12}} onClick={addMember}>登録する</button>
+            <button style={{...S.btnOutline,marginTop:8}} onClick={()=>setMode("list")}>キャンセル</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -271,40 +367,24 @@ function BenchTab({data,persist,userName,past}) {
   const [modal,setModal]     = useState(null);
 
   function groupByWeek(dates) {
-    // 月曜始まりで7日ずつ
     const weeks=[];
     for(let i=0;i<dates.length;i+=7) weeks.push(dates.slice(i,i+7));
     return weeks;
   }
-
   const weeks = groupByWeek(past ? historyDates : futureDates).slice(0,past?5:2);
   const activeWeek = weeks.find(w=>w.includes(selDate))||weeks[0];
   const weekLabels = past
     ? weeks.map(w=>`${w[0].slice(5).replace("-","/")}〜`)
     : ["今週","来週"];
 
-  function getSlots(bench) {
-    return data.reservations?.[selDate]?.[bench]||{};
-  }
-
-  // スロット表示用：時間帯ごとにまとめる
-  function getSlotsForDisplay(bench) {
-    const slots = getSlots(bench);
-    // {startKey: {name, partner, memo, endKey}} のマップを作る
-    const entries = Object.entries(slots).sort((a,b)=>{
-      const [ah,am]=a[0].split(":").map(Number);
-      const [bh,bm]=b[0].split(":").map(Number);
-      return ah*60+am-(bh*60+bm);
-    });
-    return entries;
-  }
+  const allSlots=[];
+  for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) allSlots.push({h,m});
 
   function confirmRes(bench,startH,startM,endH,endM,name,partner,memo){
     if(past)return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.reservations[selDate]=nd.reservations[selDate]||{};
     nd.reservations[selDate][bench]=nd.reservations[selDate][bench]||{};
-    // 既存の予約と重複チェック
     let h=startH, m=startM;
     while(h*60+m < endH*60+endM) {
       if(nd.reservations[selDate][bench][`${h}:${m}`]) {
@@ -313,7 +393,6 @@ function BenchTab({data,persist,userName,past}) {
       }
       m+=10; if(m>=60){m=0;h++;}
     }
-    // 重複なければ登録
     h=startH; m=startM;
     while(h*60+m < endH*60+endM) {
       nd.reservations[selDate][bench][`${h}:${m}`]={name,partner,memo,startH,startM,endH,endM};
@@ -332,10 +411,6 @@ function BenchTab({data,persist,userName,past}) {
     }
     persist(nd);setModal(null);
   }
-
-  // 7:00〜22:50 の全スロット
-  const allSlots=[];
-  for(let h=7;h<23;h++) for(let m=0;m<60;m+=10) allSlots.push({h,m});
 
   return (
     <div>
@@ -370,7 +445,6 @@ function BenchTab({data,persist,userName,past}) {
           );
         })}
       </div>
-
       {BENCHES.map(bench=>(
         <div key={bench} style={S.benchBlock}>
           <div style={S.benchLabel}>{bench}</div>
@@ -391,8 +465,7 @@ function BenchTab({data,persist,userName,past}) {
           </div>
         </div>
       ))}
-
-      {modal&&<ReserveModal modal={modal} userName={userName} members={data.members}
+      {modal&&<ReserveModal modal={modal} userName={userName} members={data.members||[]}
         selDate={selDate} onConfirm={confirmRes} onCancel={cancelRes} onClose={()=>setModal(null)}/>}
     </div>
   );
@@ -401,8 +474,7 @@ function BenchTab({data,persist,userName,past}) {
 // ── ReserveModal ───────────────────────────────────────────
 function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose}){
   const {bench,h,m,existing}=modal;
-  const allMembers=[...new Set(["なし",...members.filter(mn=>mn!==userName)])];
-
+  const otherMembers=["なし",...members.filter(mn=>mn!==userName)];
   const timeOptions=[];
   for(let th=7;th<23;th++) for(let tm=0;tm<60;tm+=10) timeOptions.push({h:th,m:tm,label:tLabel(th,tm)});
   timeOptions.push({h:23,m:0,label:"23:00"});
@@ -411,11 +483,10 @@ function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose
   const [partner,setPartner]=useState(existing?.partner||"なし");
   const [memo,setMemo]=useState(existing?.memo||"");
   const [useEndTime,setUseEndTime]=useState(false);
-  const defaultEndM=(m+10)>=60?0:m+10;
-  const defaultEndH=(m+10)>=60?h+1:h;
-  const [endH,setEndH]=useState(existing?.endH||defaultEndH);
-  const [endM,setEndM]=useState(existing?.endM||defaultEndM);
-
+  const defEndM=(m+10)>=60?0:m+10;
+  const defEndH=(m+10)>=60?h+1:h;
+  const [endH,setEndH]=useState(existing?.endH||defEndH);
+  const [endM,setEndM]=useState(existing?.endM||defEndM);
   const isMine=existing?.name===userName||(existing?.partner&&existing?.partner===userName);
 
   if(existing){
@@ -434,7 +505,7 @@ function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose
           </div>
           {isMine&&(
             <button style={{...S.btn,background:"#dc2626",marginTop:12}}
-              onClick={()=>onCancel(bench,existing.startH??h,existing.startM??m,existing.endH??h,existing.endM??(m+10>=60?m+10-60:m+10))}>
+              onClick={()=>onCancel(bench,existing.startH??h,existing.startM??m,existing.endH??(h),existing.endM??((m+10>=60?m+10-60:m+10)))}>
               予約をキャンセル
             </button>
           )}
@@ -453,12 +524,10 @@ function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose
       <div style={S.modalCard} onClick={e=>e.stopPropagation()}>
         <div style={S.modalTitle}>{bench}</div>
         <div style={{color:"#6b7280",fontSize:13,marginBottom:12}}>{tLabel(h,m)}〜（10分）</div>
-
         <label style={{...S.label,display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12}}>
           <input type="checkbox" checked={useEndTime} onChange={e=>setUseEndTime(e.target.checked)}/>
           終了時間を指定する（長時間予約）
         </label>
-
         {useEndTime&&(
           <div style={{marginBottom:12}}>
             <label style={S.label}>終了時間</label>
@@ -471,26 +540,22 @@ function ReserveModal({modal,userName,members,selDate,onConfirm,onCancel,onClose
             {!valid&&<div style={{color:"#dc2626",fontSize:12,marginTop:4}}>終了時間は開始より後にしてください</div>}
           </div>
         )}
-
         <label style={S.label}>予約者</label>
         <select style={S.input} value={name} onChange={e=>setName(e.target.value)}>
           {[...new Set([userName,...members])].map(n=><option key={n}>{n}</option>)}
         </select>
-
         <label style={{...S.label,marginTop:8}}>一緒に使用する人</label>
         <select style={S.input} value={partner} onChange={e=>setPartner(e.target.value)}>
-          {allMembers.map(n=><option key={n}>{n}</option>)}
+          {otherMembers.map(n=><option key={n}>{n}</option>)}
         </select>
-
         <label style={{...S.label,marginTop:8}}>メモ（任意）</label>
         <input style={S.input} placeholder="例：細胞名、継代" value={memo} onChange={e=>setMemo(e.target.value)}/>
-
         <button style={{...S.btn,marginTop:12,opacity:valid?1:0.4}}
           onClick={()=>{
             if(!valid)return;
-            const actualEndH=useEndTime?endH:(m+10>=60?h+1:h);
-            const actualEndM=useEndTime?endM:(m+10>=60?(m+10-60):m+10);
-            onConfirm(bench,h,m,actualEndH,actualEndM,name,partner,memo);
+            const aEH=useEndTime?endH:defEndH;
+            const aEM=useEndTime?endM:defEndM;
+            onConfirm(bench,h,m,aEH,aEM,name,partner,memo);
           }}>
           予約する
         </button>
@@ -508,12 +573,9 @@ function InventoryTab({data,persist}){
   const [mode,setMode]=useState("use");
   const [showAdd,setShowAdd]=useState(false);
   const [editingItem,setEditingItem]=useState(null);
-  const [newItem,setNewItem]=useState({name:"",unit:"個",isBox:false,perBox:96,stock:0,inUse:0,alert:5});
+  const [newItem,setNewItem]=useState({name:"",unit:"個",isBox:false,perBox:96,stock:0,inUse:0,alert:5,location:""});
 
-  function isLowAlert(item){
-    if(item.alert==null||item.alert===-1) return false;
-    return item.stock<=item.alert;
-  }
+  function isLow(item){ if(item.alert==null||item.alert===-1)return false; return item.stock<=item.alert; }
 
   function applyDelta(id){
     const n=parseFloat(delta); if(isNaN(n)){setEditId(null);return;}
@@ -533,9 +595,10 @@ function InventoryTab({data,persist}){
       perBox:newItem.isBox?parseInt(newItem.perBox)||96:null,
       stock:parseFloat(newItem.stock)||0, inUse:parseInt(newItem.inUse)||0,
       alert:newItem.alert===-1?-1:parseFloat(newItem.alert)||0,
+      location:newItem.location||"",
     }];
     persist(nd); setShowAdd(false);
-    setNewItem({name:"",unit:"個",isBox:false,perBox:96,stock:0,inUse:0,alert:5});
+    setNewItem({name:"",unit:"個",isBox:false,perBox:96,stock:0,inUse:0,alert:5,location:""});
   }
   function saveEdit(id,changes){
     const nd=JSON.parse(JSON.stringify(data));
@@ -544,7 +607,7 @@ function InventoryTab({data,persist}){
     persist(nd); setEditingItem(null);
   }
   function removeItem(id){
-    if(!window.confirm("本当に削除しますか？")) return;
+    if(!window.confirm("本当に削除しますか？"))return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.inventory=nd.inventory.filter(i=>i.id!==id); persist(nd); setEditingItem(null);
   }
@@ -570,8 +633,7 @@ function InventoryTab({data,persist}){
               <input style={S.input} type="number" value={newItem.stock} onChange={e=>setNewItem({...newItem,stock:e.target.value})}/></div>
             <div style={{flex:1}}><label style={S.label}>使用中</label>
               <input style={S.input} type="number" value={newItem.inUse} onChange={e=>setNewItem({...newItem,inUse:e.target.value})}/></div>
-            <div style={{flex:1}}>
-              <label style={S.label}>警告数</label>
+            <div style={{flex:1}}><label style={S.label}>警告数</label>
               <select style={S.input} value={newItem.alert===-1?"none":newItem.alert}
                 onChange={e=>setNewItem({...newItem,alert:e.target.value==="none"?-1:parseFloat(e.target.value)||0})}>
                 <option value="none">なし(-)</option>
@@ -579,39 +641,34 @@ function InventoryTab({data,persist}){
               </select>
             </div>
           </div>
+          <input style={S.input} placeholder="保管場所（例：クリーンベンチ棚、冷蔵庫）" value={newItem.location} onChange={e=>setNewItem({...newItem,location:e.target.value})}/>
           <button style={S.btn} onClick={addItem}>追加する</button>
         </div>
       )}
       <div style={S.itemList}>
         {list.map(item=>{
-          const low=isLowAlert(item);
-          const isEditSettings=editingItem?.id===item.id;
+          const low=isLow(item);
+          const isES=editingItem?.id===item.id;
           const isEdit=editId===item.id;
-          const inUse=item.inUse||0;
           return(
             <div key={item.id} style={{...S.itemCard,...(low?S.itemCardLow:{})}}>
               <div style={S.itemTop}>
                 <div style={{flex:1}}>
                   <span style={S.itemName}>{low&&"⚠️ "}{item.name}</span>
                   {item.isBox&&item.perBox&&<span style={S.subLabel}>　1箱={item.perBox}本</span>}
+                  {item.location&&<div style={{fontSize:11,color:"#6b7280",marginTop:2}}>📍 {item.location}</div>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{textAlign:"right"}}>
                     <div style={S.itemStock}>{item.stock}<span style={{fontSize:11,color:"#6b7280",marginLeft:2}}>{item.unit}</span></div>
-                    {inUse>0&&<div style={{fontSize:11,color:"#ea580c",fontWeight:600}}>使用中 {inUse}{item.unit}</div>}
-                    {(item.alert===-1||item.alert==null)
-                      ?<div style={{fontSize:10,color:"#9ca3af"}}>警告なし</div>
-                      :<div style={{fontSize:10,color:"#9ca3af"}}>警告:{item.alert}{item.unit}以下</div>
-                    }
+                    {(item.inUse||0)>0&&<div style={{fontSize:11,color:"#ea580c",fontWeight:600}}>使用中 {item.inUse}{item.unit}</div>}
                   </div>
-                  <button style={S.iconBtn} onClick={()=>setEditingItem(isEditSettings?null:{...item})}>⚙️</button>
+                  <button style={S.iconBtn} onClick={()=>setEditingItem(isES?null:{...item})}>⚙️</button>
                 </div>
               </div>
-              {isEditSettings&&(
-                <InvSettingsEditor item={editingItem} onChange={setEditingItem}
-                  onSave={()=>saveEdit(item.id,editingItem)} onRemove={()=>removeItem(item.id)} onCancel={()=>setEditingItem(null)}/>
-              )}
-              {!isEditSettings&&(isEdit?(
+              {isES&&<InvSettingsEditor item={editingItem} onChange={setEditingItem}
+                onSave={()=>saveEdit(item.id,editingItem)} onRemove={()=>removeItem(item.id)} onCancel={()=>setEditingItem(null)}/>}
+              {!isES&&(isEdit?(
                 <div style={{marginTop:8}}>
                   <div style={{display:"flex",gap:4,marginBottom:6}}>
                     {[["use","消費"],["add","補充"],["inuse","使用中"]].map(([k,l])=>(
@@ -659,8 +716,7 @@ function InvSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           <input style={S.input} type="number" value={item.stock} onChange={e=>onChange({...item,stock:parseFloat(e.target.value)||0})}/></div>
         <div style={{flex:1}}><label style={S.label}>使用中</label>
           <input style={S.input} type="number" value={item.inUse||0} onChange={e=>onChange({...item,inUse:parseInt(e.target.value)||0})}/></div>
-        <div style={{flex:1}}>
-          <label style={S.label}>警告数</label>
+        <div style={{flex:1}}><label style={S.label}>警告数</label>
           <select style={S.input} value={item.alert===-1||item.alert==null?"none":item.alert}
             onChange={e=>onChange({...item,alert:e.target.value==="none"?-1:parseFloat(e.target.value)||0})}>
             <option value="none">なし(-)</option>
@@ -684,10 +740,7 @@ function ReagentTab({data,persist,userName}){
   const [editingItem,setEditingItem]=useState(null);
   const [nv,setNv]=useState({cell:"",name:"",stock:0,inUse:0,openedBy:"",note:"",alert:1,unit:"本"});
 
-  function isLowAlert(item){
-    if(item.alert==null||item.alert===-1) return false;
-    return item.stock<=item.alert;
-  }
+  function isLow(item){ if(item.alert==null||item.alert===-1)return false; return item.stock<=item.alert; }
 
   function addReagent(){
     if(!nv.name.trim())return;
@@ -697,6 +750,7 @@ function ReagentTab({data,persist,userName}){
       stock:parseInt(nv.stock)||0, inUse:parseInt(nv.inUse)||0,
       openedBy:nv.openedBy.trim(), note:nv.note.trim(),
       alert:nv.alert===-1?-1:parseInt(nv.alert)||0, unit:nv.unit||"本",
+      location:nv.location||"",
       addedBy:userName, addedAt:todayStr(),
     }];
     persist(nd); setShowAdd(false);
@@ -708,7 +762,7 @@ function ReagentTab({data,persist,userName}){
     Object.assign(item,changes); persist(nd); setEditingItem(null);
   }
   function removeItem(id){
-    if(!window.confirm("本当に削除しますか？")) return;
+    if(!window.confirm("本当に削除しますか？"))return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.reagents=(nd.reagents||[]).filter(i=>i.id!==id); persist(nd); setEditingItem(null);
   }
@@ -738,8 +792,7 @@ function ReagentTab({data,persist,userName}){
               <input style={S.input} type="number" value={nv.stock} onChange={e=>setNv({...nv,stock:e.target.value})}/></div>
             <div style={{flex:1}}><label style={S.label}>使用中</label>
               <input style={S.input} type="number" value={nv.inUse} onChange={e=>setNv({...nv,inUse:e.target.value})}/></div>
-            <div style={{flex:1}}>
-              <label style={S.label}>警告数</label>
+            <div style={{flex:1}}><label style={S.label}>警告数</label>
               <select style={S.input} value={nv.alert===-1?"none":nv.alert}
                 onChange={e=>setNv({...nv,alert:e.target.value==="none"?-1:parseInt(e.target.value)||0})}>
                 <option value="none">なし(-)</option>
@@ -748,28 +801,25 @@ function ReagentTab({data,persist,userName}){
             </div>
           </div>
           <input style={S.input} placeholder="使用者（開封中の場合）" value={nv.openedBy} onChange={e=>setNv({...nv,openedBy:e.target.value})}/>
-          <input style={S.input} placeholder="メモ（例：DMEM+10%FBS、-20℃保管）" value={nv.note} onChange={e=>setNv({...nv,note:e.target.value})}/>
+          <input style={S.input} placeholder="保管場所（例：-20℃冷凍庫、冷蔵庫）" value={nv.location||""} onChange={e=>setNv({...nv,location:e.target.value})}/>
+          <input style={S.input} placeholder="メモ（例：DMEM+10%FBS）" value={nv.note} onChange={e=>setNv({...nv,note:e.target.value})}/>
           <button style={S.btn} onClick={addReagent}>追加する</button>
         </div>
       )}
       {list.length===0&&<div style={S.empty}>試薬が登録されていません</div>}
       <div style={S.itemList}>
-        {list.map(item=>{
-          const low=isLowAlert(item);
-          const isEditSettings=editingItem?.id===item.id;
-          return(
-            <ReagentCard key={item.id} item={item} isLow={low} isEditSettings={isEditSettings}
-              editingItem={editingItem} setEditingItem={setEditingItem}
-              onSave={()=>saveEdit(item.id,editingItem)} onRemove={()=>removeItem(item.id)}
-              onAdjust={adjustStock}/>
-          );
-        })}
+        {list.map(item=>(
+          <ReagentCard key={item.id} item={item} isLow={isLow(item)} isES={editingItem?.id===item.id}
+            editingItem={editingItem} setEditingItem={setEditingItem}
+            onSave={()=>saveEdit(item.id,editingItem)} onRemove={()=>removeItem(item.id)}
+            onAdjust={adjustStock}/>
+        ))}
       </div>
     </div>
   );
 }
 
-function ReagentCard({item,isLow,isEditSettings,editingItem,setEditingItem,onSave,onRemove,onAdjust}){
+function ReagentCard({item,isLow,isES,editingItem,setEditingItem,onSave,onRemove,onAdjust}){
   const [editStock,setEditStock]=useState(false);
   const [delta,setDelta]=useState("");
   const [mode,setMode]=useState("use");
@@ -779,6 +829,7 @@ function ReagentCard({item,isLow,isEditSettings,editingItem,setEditingItem,onSav
         <div style={{flex:1}}>
           {item.cell&&<div style={{color:"#6b7280",fontSize:11,marginBottom:2}}>🔬 {item.cell}</div>}
           <span style={S.itemName}>{isLow&&"⚠️ "}{item.name}</span>
+          {item.location&&<div style={{fontSize:11,color:"#6b7280",marginTop:2}}>📍 {item.location}</div>}
           {item.note&&<div style={{color:"#6b7280",fontSize:12,marginTop:2}}>{item.note}</div>}
           <div style={{marginTop:4,display:"flex",gap:12,flexWrap:"wrap"}}>
             <span style={{fontSize:13,color:"#1d4ed8",fontWeight:700}}>在庫 {item.stock}<span style={{fontSize:11,color:"#6b7280",marginLeft:2}}>{item.unit||"本"}</span></span>
@@ -787,13 +838,11 @@ function ReagentCard({item,isLow,isEditSettings,editingItem,setEditingItem,onSav
           {item.openedBy&&<div style={{fontSize:12,color:"#ea580c",marginTop:2}}>使用者：{item.openedBy}</div>}
           <div style={{color:"#9ca3af",fontSize:11,marginTop:2}}>登録：{item.addedBy}（{item.addedAt}）</div>
         </div>
-        <button style={S.iconBtn} onClick={()=>setEditingItem(isEditSettings?null:{...item})}>⚙️</button>
+        <button style={S.iconBtn} onClick={()=>setEditingItem(isES?null:{...item})}>⚙️</button>
       </div>
-      {isEditSettings&&(
-        <ReagentSettingsEditor item={editingItem} onChange={setEditingItem}
-          onSave={onSave} onRemove={onRemove} onCancel={()=>setEditingItem(null)}/>
-      )}
-      {!isEditSettings&&(editStock?(
+      {isES&&<ReagentSettingsEditor item={editingItem} onChange={setEditingItem}
+        onSave={onSave} onRemove={onRemove} onCancel={()=>setEditingItem(null)}/>}
+      {!isES&&(editStock?(
         <div style={{marginTop:8}}>
           <div style={{display:"flex",gap:4,marginBottom:6}}>
             {[["use","消費"],["add","補充"],["inuse","使用中"]].map(([k,l])=>(
@@ -831,8 +880,7 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           <input style={S.input} type="number" value={item.stock} onChange={e=>onChange({...item,stock:parseInt(e.target.value)||0})}/></div>
         <div style={{flex:1}}><label style={S.label}>使用中</label>
           <input style={S.input} type="number" value={item.inUse||0} onChange={e=>onChange({...item,inUse:parseInt(e.target.value)||0})}/></div>
-        <div style={{flex:1}}>
-          <label style={S.label}>警告数</label>
+        <div style={{flex:1}}><label style={S.label}>警告数</label>
           <select style={S.input} value={item.alert===-1||item.alert==null?"none":item.alert}
             onChange={e=>onChange({...item,alert:e.target.value==="none"?-1:parseInt(e.target.value)||0})}>
             <option value="none">なし(-)</option>
@@ -842,6 +890,8 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
       </div>
       <div><label style={S.label}>使用者（開封中）</label>
         <input style={S.input} value={item.openedBy||""} onChange={e=>onChange({...item,openedBy:e.target.value})}/></div>
+      <div><label style={S.label}>保管場所</label>
+        <input style={S.input} placeholder="例：-20℃冷凍庫、冷蔵庫" value={item.location||""} onChange={e=>onChange({...item,location:e.target.value})}/></div>
       <div><label style={S.label}>メモ</label>
         <input style={S.input} value={item.note||""} onChange={e=>onChange({...item,note:e.target.value})}/></div>
       <div style={{display:"flex",gap:6}}>
@@ -855,29 +905,41 @@ function ReagentSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
 
 // ── CleaningTab ────────────────────────────────────────────
 function CleaningTab({data,persist,userName}){
-  const [activeId,setActiveId]=useState(null);
-  const [note,setNote]=useState("");
-  const [coWorker,setCoWorker]=useState("");
-  const [logDate,setLogDate]=useState(todayStr());
-  const [editLog,setEditLog]=useState(null);
-  const [editLogNote,setEditLogNote]=useState("");
-  const [showAddItem,setShowAddItem]=useState(false);
-  const [newClean,setNewClean]=useState({name:"",freq:"溜まったら"});
-  const today=todayStr();
+  const [activeId,setActiveId]   = useState(null);
+  const [note,setNote]           = useState("");
+  const [coWorkers,setCoWorkers] = useState([]); // 複数人対応
+  const [coWorkerInput,setCoWorkerInput] = useState("");
+  const [logDate,setLogDate]     = useState(todayStr());
+  const [editLog,setEditLog]     = useState(null);
+  const [editLogNote,setEditLogNote] = useState("");
+  const [showAddItem,setShowAddItem] = useState(false);
+  const [newClean,setNewClean]   = useState({name:"",freq:"溜まったら",steps:""});
+  const [editSteps,setEditSteps] = useState(null); // steps編集中のid
+  const [stepsInput,setStepsInput] = useState("");
+  const today = todayStr();
   const freqOrder={"溜まったら":0,"汚くなったら":1,"随時":2,"週1":3,"月1":4,"年1":5,"年2":6};
   const freqDays={"週1":7,"月1":30,"年1":365,"年2":730};
   const sorted=[...(data.cleaning||[])].sort((a,b)=>(freqOrder[a.freq]??9)-(freqOrder[b.freq]??9));
 
+  function addCoWorker(){
+    const name = coWorkerInput.trim();
+    if(!name || coWorkers.includes(name)) return;
+    setCoWorkers([...coWorkers, name]);
+    setCoWorkerInput("");
+  }
+  function removeCoWorker(name){
+    setCoWorkers(coWorkers.filter(c=>c!==name));
+  }
 
   function logItem(id){
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===id); if(!item)return;
-    const whoStr=coWorker&&coWorker.trim()?`${userName}・${coWorker.trim()}`:userName;
-    item.log=[{id:"l"+Date.now(),date:logDate,who:whoStr,note},...(item.log||[])];
-    persist(nd); setActiveId(null); setNote(""); setCoWorker(""); setLogDate(todayStr());
+    const allWho = coWorkers.length>0 ? `${userName}・${coWorkers.join("・")}` : userName;
+    item.log=[{id:"l"+Date.now(),date:logDate,who:allWho,note},...(item.log||[])];
+    persist(nd); setActiveId(null); setNote(""); setCoWorkers([]); setCoWorkerInput(""); setLogDate(todayStr());
   }
   function deleteLog(cleanId,logId){
-    if(!window.confirm("この記録を削除しますか？")) return;
+    if(!window.confirm("この記録を削除しますか？"))return;
     const nd=JSON.parse(JSON.stringify(data));
     const item=nd.cleaning.find(c=>c.id===cleanId); if(!item)return;
     item.log=item.log.filter(l=>l.id!==logId); persist(nd);
@@ -892,13 +954,19 @@ function CleaningTab({data,persist,userName}){
   function addCleanItem(){
     if(!newClean.name.trim())return;
     const nd=JSON.parse(JSON.stringify(data));
-    nd.cleaning=[...(nd.cleaning||[]),{id:"cl_"+Date.now(),name:newClean.name.trim(),freq:newClean.freq,log:[]}];
-    persist(nd); setShowAddItem(false); setNewClean({name:"",freq:"溜まったら"});
+    nd.cleaning=[...(nd.cleaning||[]),{id:"cl_"+Date.now(),name:newClean.name.trim(),freq:newClean.freq,steps:newClean.steps,log:[]}];
+    persist(nd); setShowAddItem(false); setNewClean({name:"",freq:"溜まったら",steps:""});
   }
   function removeCleanItem(id){
-    if(!window.confirm("本当に削除しますか？")) return;
+    if(!window.confirm("本当に削除しますか？"))return;
     const nd=JSON.parse(JSON.stringify(data));
     nd.cleaning=nd.cleaning.filter(c=>c.id!==id); persist(nd);
+  }
+  function saveSteps(id){
+    const nd=JSON.parse(JSON.stringify(data));
+    const item=nd.cleaning.find(c=>c.id===id); if(!item)return;
+    item.steps=stepsInput;
+    persist(nd); setEditSteps(null);
   }
 
   return(
@@ -914,6 +982,9 @@ function CleaningTab({data,persist,userName}){
           <select style={S.input} value={newClean.freq} onChange={e=>setNewClean({...newClean,freq:e.target.value})}>
             {FREQ_OPTIONS.map(f=><option key={f}>{f}</option>)}
           </select>
+          <label style={S.label}>手順（任意）</label>
+          <textarea style={{...S.input,minHeight:60,resize:"vertical"}} placeholder="手順を入力..."
+            value={newClean.steps} onChange={e=>setNewClean({...newClean,steps:e.target.value})}/>
           <button style={S.btn} onClick={addCleanItem}>追加する</button>
         </div>
       )}
@@ -923,6 +994,7 @@ function CleaningTab({data,persist,userName}){
           const days=last?daysDiff(last.date,today):null;
           const overdue=freqDays[item.freq]&&(days===null||days>=freqDays[item.freq]);
           const isActive=activeId===item.id;
+          const isEditingSteps=editSteps===item.id;
           return(
             <div key={item.id} style={{...S.itemCard,...(overdue?S.itemCardLow:{})}}>
               <div style={S.itemTop}>
@@ -931,30 +1003,78 @@ function CleaningTab({data,persist,userName}){
                   <span style={S.freqBadge}>{item.freq}</span>
                 </div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  <button style={S.doneBtn} onClick={()=>{setActiveId(isActive?null:item.id);setNote("");setCoWorker("");setLogDate(todayStr());}}>
+                  <button style={S.doneBtn} onClick={()=>{
+                    setActiveId(isActive?null:item.id);
+                    setNote(""); setCoWorkers([]); setCoWorkerInput(""); setLogDate(todayStr());
+                  }}>
                     {isActive?"✕":"✓ やった"}
                   </button>
                   <button style={{...S.iconBtn,fontSize:12,padding:"4px 8px",color:"#dc2626"}}
                     onClick={()=>removeCleanItem(item.id)}>🗑</button>
                 </div>
               </div>
+
+              {/* 手順 */}
+              {isEditingSteps?(
+                <div style={{marginTop:8}}>
+                  <textarea style={{...S.input,minHeight:80,resize:"vertical"}} value={stepsInput}
+                    onChange={e=>setStepsInput(e.target.value)} placeholder="手順を入力..."/>
+                  <div style={{display:"flex",gap:6,marginTop:6}}>
+                    <button style={{...S.btn,flex:2}} onClick={()=>saveSteps(item.id)}>保存</button>
+                    <button style={{...S.btnOutline,flex:1}} onClick={()=>setEditSteps(null)}>キャンセル</button>
+                  </div>
+                </div>
+              ):(
+                <div style={{marginTop:6}}>
+                  {item.steps?(
+                    <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"8px 10px",fontSize:12,color:"#0369a1",whiteSpace:"pre-wrap"}}>
+                      📋 {item.steps}
+                    </div>
+                  ):null}
+                  <button style={{...S.iconBtn,fontSize:11,padding:"3px 8px",marginTop:4,color:"#6b7280"}}
+                    onClick={()=>{setEditSteps(item.id);setStepsInput(item.steps||"");}}>
+                    {item.steps?"手順を編集":"＋ 手順を追加"}
+                  </button>
+                </div>
+              )}
+
               <div style={S.lastLog}>
                 {last?`最終：${last.date}（${days===0?"今日":`${days}日前`}）　${last.who}${last.note?`「${last.note}」`:""}` :"まだ記録なし"}
               </div>
+
               {isActive&&(
                 <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8}}>
                   <div>
                     <label style={S.label}>日付</label>
-                    <input style={{...S.input,boxSizing:"border-box",width:"100%"}} type="date" value={logDate} onChange={e=>setLogDate(e.target.value)}/>
+                    <input style={{...S.input,boxSizing:"border-box",width:"100%"}} type="date"
+                      value={logDate} onChange={e=>setLogDate(e.target.value)}/>
                   </div>
                   <div>
-                    <label style={S.label}>一緒にした人（任意）</label>
-                    <input style={S.input} placeholder="例：木村、西岡" value={coWorker} onChange={e=>setCoWorker(e.target.value)}/>
+                    <label style={S.label}>一緒にした人（何人でも追加可）</label>
+                    <div style={{display:"flex",gap:6}}>
+                      <input style={{...S.input,flex:1}} placeholder="名前を入力してEnter"
+                        value={coWorkerInput} onChange={e=>setCoWorkerInput(e.target.value)}
+                        onKeyDown={e=>e.key==="Enter"&&addCoWorker()}/>
+                      <button style={{...S.smallBtn}} onClick={addCoWorker}>追加</button>
+                    </div>
+                    {coWorkers.length>0&&(
+                      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:6}}>
+                        {coWorkers.map(c=>(
+                          <span key={c} style={{background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:16,
+                            padding:"3px 10px",fontSize:12,color:"#1d4ed8",display:"flex",alignItems:"center",gap:4}}>
+                            {c}
+                            <button onClick={()=>removeCoWorker(c)}
+                              style={{background:"none",border:"none",cursor:"pointer",color:"#6b7280",fontSize:14,padding:0,lineHeight:1}}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <input style={S.input} placeholder="メモ（任意）" value={note} onChange={e=>setNote(e.target.value)}/>
                   <button style={S.btn} onClick={()=>logItem(item.id)}>記録する</button>
                 </div>
               )}
+
               {item.log?.length>0&&(
                 <details style={{marginTop:6}}>
                   <summary style={{color:"#6b7280",fontSize:12,cursor:"pointer"}}>履歴（{item.log.length}件）</summary>
@@ -997,15 +1117,18 @@ const S={
   root:{minHeight:"100vh",background:"#f9fafb",fontFamily:"'Noto Sans JP','Hiragino Sans',sans-serif",color:"#111827",paddingBottom:80},
   center:{height:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f9fafb"},
   spinner:{width:32,height:32,borderRadius:"50%",border:"3px solid #e5e7eb",borderTopColor:"#1d4ed8",animation:"spin 0.8s linear infinite"},
-  header:{background:"#fff",borderBottom:"2px solid #e5e7eb",padding:"14px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"},
+  header:{background:"#fff",borderBottom:"2px solid #e5e7eb",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"},
   headerTitle:{fontSize:18,fontWeight:700,color:"#111827",letterSpacing:1},
   headerUser:{fontSize:13,color:"#6b7280"},
+  editBtn:{padding:"6px 12px",background:"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"inherit",color:"#374151"},
   nav:{display:"flex",overflowX:"auto",background:"#fff",borderBottom:"2px solid #e5e7eb",position:"sticky",top:53,zIndex:99},
   navBtn:{flexShrink:0,padding:"10px 10px",background:"none",border:"none",color:"#6b7280",fontSize:11,cursor:"pointer",fontFamily:"inherit",borderBottom:"2px solid transparent",whiteSpace:"nowrap"},
   navActive:{color:"#1d4ed8",borderBottom:"2px solid #1d4ed8",fontWeight:700},
   main:{padding:16},
   nameCard:{background:"#fff",borderRadius:16,padding:32,width:"90%",maxWidth:340,display:"flex",flexDirection:"column",alignItems:"center",boxShadow:"0 4px 16px rgba(0,0,0,0.08)",border:"1px solid #e5e7eb"},
   nameInput:{width:"100%",padding:"12px 14px",background:"#f9fafb",border:"1px solid #d1d5db",borderRadius:8,color:"#111827",fontSize:16,marginBottom:12,fontFamily:"inherit",boxSizing:"border-box"},
+  memberSelectBtn:{width:"100%",padding:"12px 16px",background:"#f9fafb",border:"1px solid #d1d5db",borderRadius:8,color:"#374151",fontSize:15,cursor:"pointer",fontFamily:"inherit",textAlign:"left"},
+  memberSelectBtnActive:{background:"#dbeafe",border:"2px solid #1d4ed8",color:"#1d4ed8",fontWeight:700},
   homeTitle:{fontSize:17,fontWeight:700,color:"#111827",marginBottom:4},
   homeDate:{fontSize:13,color:"#6b7280",marginBottom:16},
   alertBox:{background:"#fff7ed",border:"2px solid #f97316",borderRadius:12,padding:14,marginBottom:16},
@@ -1025,6 +1148,7 @@ const S={
   weekBtn:{padding:"7px 14px",background:"#fff",border:"1px solid #d1d5db",borderRadius:8,color:"#374151",fontSize:12,cursor:"pointer",fontFamily:"inherit"},
   weekBtnActive:{background:"#eff6ff",border:"2px solid #1d4ed8",color:"#1d4ed8",fontWeight:700},
   benchBlock:{marginBottom:20},
+  benchLabel:{color:"#111827",fontSize:14,fontWeight:700,marginBottom:8,borderLeft:"3px solid #1d4ed8",paddingLeft:8},
   slotGrid:{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:3},
   slot:{padding:"6px 2px",borderRadius:6,display:"flex",flexDirection:"column",alignItems:"center",minHeight:44},
   slotEmpty:{background:"#f1f5f9",border:"1px solid #cbd5e1",cursor:"pointer"},
@@ -1032,11 +1156,8 @@ const S={
   slotOther:{background:"#ffedd5",border:"2px solid #f97316",cursor:"pointer"},
   slotTime:{fontSize:9,color:"#6b7280"},
   slotName:{fontSize:9,fontWeight:700,color:"#111827",marginTop:2,textAlign:"center",wordBreak:"break-all",lineHeight:1.2},
-  benchLabel:{color:"#111827",fontSize:14,fontWeight:700,marginBottom:8,borderLeft:"3px solid #1d4ed8",paddingLeft:8},
-  resCard:{background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:10,padding:"10px 12px",marginBottom:6,cursor:"pointer"},
-  resCardMine:{background:"#eff6ff",border:"1px solid #bfdbfe"},
   overlay:{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200},
-  modalCard:{background:"#fff",borderRadius:"16px 16px 0 0",padding:24,width:"100%",maxWidth:480,paddingBottom:40,boxShadow:"0 -4px 20px rgba(0,0,0,0.1)"},
+  modalCard:{background:"#fff",borderRadius:"16px 16px 0 0",padding:24,width:"100%",maxWidth:480,paddingBottom:40,boxShadow:"0 -4px 20px rgba(0,0,0,0.1)",maxHeight:"85vh",overflowY:"auto"},
   modalTitle:{fontSize:17,fontWeight:700,color:"#111827",marginBottom:4},
   existingSlot:{background:"#f9fafb",borderRadius:10,padding:14,display:"flex",gap:12,alignItems:"flex-start",border:"1px solid #e5e7eb"},
   sectionHeader:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12},
