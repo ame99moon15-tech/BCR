@@ -724,6 +724,8 @@ function InvSettingsEditor({item,onChange,onSave,onRemove,onCancel}){
           </select>
         </div>
       </div>
+      <div><label style={S.label}>保管場所</label>
+        <input style={S.input} placeholder="例：クリーンベンチ棚、冷蔵庫" value={item.location||""} onChange={e=>onChange({...item,location:e.target.value})}/></div>
       <div style={{display:"flex",gap:6}}>
         <button style={{...S.btn,flex:2}} onClick={onSave}>保存</button>
         <button style={{...S.btnOutline,flex:1}} onClick={onCancel}>キャンセル</button>
