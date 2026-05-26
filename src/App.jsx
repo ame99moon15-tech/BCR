@@ -2,15 +2,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 const JSONBIN_API_KEY = "$2a$10$BpdDmKRgRhxFDBtuGquXEuKTwjK..jY/iAlGQB8Y9rDoVU9M.82GG";
 const JSONBIN_URL = "https://api.jsonbin.io/v3/b";
-let BIN_ID = "6a0eab84ee5a733b12f4d860";
+const BIN_ID = "6a0eab84ee5a733b12f4d860";
 
 async function loadData() {
   try {
-    BIN_ID = "6a0eab84ee5a733b12f4d860";
-    localStorage.setItem("lab_bin_id", BIN_ID);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(`${JSONBIN_URL}/${BIN_ID}/latest`, {
-      headers: { "X-Master-Key": JSONBIN_API_KEY }
+      headers: { "X-Master-Key": JSONBIN_API_KEY },
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (!res.ok) return null;
     const json = await res.json();
     return json.record;
