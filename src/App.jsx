@@ -1,31 +1,31 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-const JSONBIN_API_KEY = "$2a$10$BpdDmKRgRhxFDBtuGquXEuKTwjK..jY/iAlGQB8Y9rDoVU9M.82GG";
-const JSONBIN_URL = "https://api.jsonbin.io/v3/b";
-const BIN_ID = "6a0eab84ee5a733b12f4d860";
+const firebaseConfig = {
+  apiKey: "AIzaSyCyjy76kTF-A7ShW-W7DKV1H2Cj0O0Sh-E",
+  authDomain: "bcr-manage.firebaseapp.com",
+  projectId: "bcr-manage",
+  storageBucket: "bcr-manage.firebasestorage.app",
+  messagingSenderId: "787207948550",
+  appId: "1:787207948550:web:a0f4d276ad3b23106f3687",
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const DOC_REF = doc(db, "lab", "data");
 
 async function loadData() {
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch(`${JSONBIN_URL}/${BIN_ID}/latest`, {
-      headers: { "X-Master-Key": JSONBIN_API_KEY },
-      signal: controller.signal,
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json.record;
-  } catch { return null; }
+    const snap = await getDoc(DOC_REF);
+    if (snap.exists()) return snap.data();
+    return null;
+  } catch(e) { console.error(e); return null; }
 }
 
 async function saveData(data) {
   try {
-    await fetch(`${JSONBIN_URL}/${BIN_ID}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "X-Master-Key": JSONBIN_API_KEY },
-      body: JSON.stringify(data),
-    });
+    await setDoc(DOC_REF, data);
   } catch(e) { console.error(e); }
 }
 
