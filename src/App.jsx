@@ -161,7 +161,7 @@ export default function App() {
   return (
     <div style={S.root}>
       <header style={S.header}>
-        <span style={S.headerTitle}>🧪 予約管理</span>
+        <span style={S.headerTitle}>🧪 クリーンベンチ予約管理</span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={S.headerUser}>👤 {userName}</span>
           <button style={S.editBtn} onClick={()=>setShowMemberModal(true)}>編集</button>
