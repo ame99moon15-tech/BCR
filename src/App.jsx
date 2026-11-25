@@ -100,7 +100,19 @@ export default function App() {
   const [userName, setUserName] = useState("");
   const [nameSet, setNameSet]   = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
+  const [headerH, setHeaderH]   = useState(53);
+  const headerRef = useRef(null);
   const lastFetch = useRef(0);
+
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) setHeaderH(e.contentRect.height);
+    });
+    obs.observe(headerRef.current);
+    setHeaderH(headerRef.current.offsetHeight);
+    return () => obs.disconnect();
+  }, [nameSet]);
 
   const persist = useCallback((nd) => {
     setData(nd); saveData(nd);
@@ -160,14 +172,14 @@ export default function App() {
 
   return (
     <div style={S.root}>
-      <header style={S.header}>
+      <header ref={headerRef} style={S.header}>
         <span style={S.headerTitle}>🧪 クリーンベンチ予約</span>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <span style={S.headerUser}>👤 {userName}</span>
           <button style={S.editBtn} onClick={()=>setShowMemberModal(true)}>編集</button>
         </div>
       </header>
-      <nav style={S.nav}>
+      <nav style={{...S.nav, top: headerH}}>
         {TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
             style={{...S.navBtn,...(tab===t.key?S.navActive:{})}}>
