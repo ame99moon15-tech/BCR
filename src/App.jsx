@@ -69,9 +69,9 @@ const ROOM_CONFIGS = {
     label: "無菌室",
     floor: "1F",
     emoji: "🪟",
-    color: "#1d4ed8",
-    bgColor: "#eff6ff",
-    borderColor: "#bfdbfe",
+    color: "#059669",
+    bgColor: "#ecfdf5",
+    borderColor: "#a7f3d0",
     benches: ["クリーンベンチ（右）","クリーンベンチ（左）"],
     reservationKey: "reservations",
   },
@@ -80,9 +80,9 @@ const ROOM_CONFIGS = {
     label: "実験室",
     floor: "4F",
     emoji: "🔬",
-    color: "#059669",
-    bgColor: "#ecfdf5",
-    borderColor: "#a7f3d0",
+    color: "#1d4ed8",
+    bgColor: "#eff6ff",
+    borderColor: "#bfdbfe",
     benches: ["クリーンベンチ（右）","クリーンベンチ（左）"],
     reservationKey: "labReservations",
   },
@@ -153,8 +153,8 @@ export default function App() {
 
   const TABS = [
     {key:"home",  label:"🏠 ホーム"},
-    {key:"bcr",   label:"🪟 無菌室（1F）"},
     {key:"lab",   label:"🔬 実験室（4F）"},
+    {key:"bcr",   label:"🪟 無菌室（1F）"},
     {key:"history",label:"📅 履歴"},
   ];
 
@@ -316,18 +316,18 @@ function HomeTab({data, setTab, userName}) {
       <div style={S.homeTitle}>📅 今日の予約</div>
       <div style={S.homeDate}>{today}（{dow}）</div>
 
-      {/* 無菌室カード */}
+      {/* 実験室カード */}
       <div style={{...S.roomCard,borderColor:"#bfdbfe",background:"#f0f7ff"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div>
-            <span style={{...S.roomBadge,background:"#1d4ed8"}}>🪟 無菌室</span>
-            <span style={{fontSize:12,color:"#6b7280",marginLeft:6}}>1階</span>
+            <span style={{...S.roomBadge,background:"#1d4ed8"}}>🔬 実験室</span>
+            <span style={{fontSize:12,color:"#6b7280",marginLeft:6}}>4階</span>
           </div>
-          <button style={{...S.homeLink,color:"#1d4ed8"}} onClick={()=>setTab("bcr")}>予約する →</button>
+          <button style={{...S.homeLink,color:"#1d4ed8"}} onClick={()=>setTab("lab")}>予約する →</button>
         </div>
-        {bcrRes.length===0
+        {labRes.length===0
           ? <div style={S.emptySmall}>今日の予約なし</div>
-          : bcrRes.map((r,i)=>(
+          : labRes.map((r,i)=>(
             <div key={i} style={S.homeResItem}>
               <span style={{...S.homeResBench,background:"#dbeafe",color:"#1d4ed8",border:"1px solid #bfdbfe"}}>
                 {r.bench.includes("右")?"右":"左"}
@@ -340,18 +340,18 @@ function HomeTab({data, setTab, userName}) {
         }
       </div>
 
-      {/* 実験室カード */}
+      {/* 無菌室カード */}
       <div style={{...S.roomCard,borderColor:"#a7f3d0",background:"#f0fdf8"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
           <div>
-            <span style={{...S.roomBadge,background:"#059669"}}>🔬 実験室</span>
-            <span style={{fontSize:12,color:"#6b7280",marginLeft:6}}>4階</span>
+            <span style={{...S.roomBadge,background:"#059669"}}>🪟 無菌室</span>
+            <span style={{fontSize:12,color:"#6b7280",marginLeft:6}}>1階</span>
           </div>
-          <button style={{...S.homeLink,color:"#059669"}} onClick={()=>setTab("lab")}>予約する →</button>
+          <button style={{...S.homeLink,color:"#059669"}} onClick={()=>setTab("bcr")}>予約する →</button>
         </div>
-        {labRes.length===0
+        {bcrRes.length===0
           ? <div style={S.emptySmall}>今日の予約なし</div>
-          : labRes.map((r,i)=>(
+          : bcrRes.map((r,i)=>(
             <div key={i} style={S.homeResItem}>
               <span style={{...S.homeResBench,background:"#d1fae5",color:"#059669",border:"1px solid #a7f3d0"}}>
                 {r.bench.includes("右")?"右":"左"}
