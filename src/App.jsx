@@ -371,6 +371,7 @@ function HomeTab({data, setTab, userName}) {
 function BenchTab({data, persist, userName, roomKey, past}) {
   const cfg = ROOM_CONFIGS[roomKey];
   const resKey = cfg.reservationKey;
+  const isLabLocked = roomKey === "lab" && !past;
   const futureDates = weeksAvailable();
   const historyDates = pastDates();
   const [selDate, setSelDate] = useState(past ? historyDates[0] : todayStr());
@@ -391,6 +392,22 @@ function BenchTab({data, persist, userName, roomKey, past}) {
   function confirmRes(bench,startH,startM,endH,endM,name,partner,memo){
     if(past)return;
     const nd=JSON.parse(JSON.stringify(data));
+
+    // ダブルブッキングチェック：同じ名前が1F・4F合わせて既に予約していないか
+    for(const rk of Object.values(ROOM_CONFIGS)){
+      const rdata=nd[rk.reservationKey]||{};
+      for(const dateSlots of Object.values(rdata)){
+        for(const benchSlots of Object.values(dateSlots)){
+          for(const slot of Object.values(benchSlots)){
+            if(slot.name===name){
+              alert(`「${name}」はすでに予約が入っています。\n1人1予約までです。`);
+              return;
+            }
+          }
+        }
+      }
+    }
+
     if(!nd[resKey]) nd[resKey]={};
     nd[resKey][selDate]=nd[resKey][selDate]||{};
     nd[resKey][selDate][bench]=nd[resKey][selDate][bench]||{};
@@ -422,6 +439,13 @@ function BenchTab({data, persist, userName, roomKey, past}) {
 
   return (
     <div>
+      {/* 近日公開バナー（実験室のみ） */}
+      {isLabLocked && (
+        <div style={{background:"#fef9c3",border:"2px solid #fde047",borderRadius:12,padding:"14px 16px",marginBottom:16,textAlign:"center"}}>
+          <div style={{fontSize:16,fontWeight:700,color:"#854d0e",marginBottom:4}}>🔒 近日公開予定</div>
+          <div style={{fontSize:13,color:"#92400e"}}>先生からの指示があってから予約できるようになります！</div>
+        </div>
+      )}
       {/* 部屋ヘッダー */}
       <div style={{display:"flex",gap:12,alignItems:"center",padding:"12px 14px",borderRadius:12,
         border:`2px solid ${cfg.borderColor}`,background:cfg.bgColor,marginBottom:16}}>
@@ -450,14 +474,16 @@ function BenchTab({data, persist, userName, roomKey, past}) {
         {activeWeek.map(d=>{
           const dt=new Date(d+"T00:00:00");
           const dow=["日","月","火","水","木","金","土"][dt.getDay()];
-          const isWeekend=dt.getDay()===0||dt.getDay()===6;
+          const isSun=dt.getDay()===0;
+          const isSat=dt.getDay()===6;
           const hasRes=cfg.benches.some(b=>Object.keys(data[resKey]?.[d]?.[b]||{}).length>0);
           const isActive=selDate===d;
+          const dayColor=isActive?cfg.color:isSun?"#ef4444":isSat?"#2563eb":"#374151";
           return(
             <button key={d} onClick={()=>setSelDate(d)}
               style={{...S.dateBtn,
                 ...(isActive?{background:cfg.bgColor,border:`2px solid ${cfg.color}`,fontWeight:700}:{}),
-                color:isActive?cfg.color:(isWeekend?"#ef4444":"#374151")}}>
+                color:dayColor}}>
               {d===todayStr()&&<span style={{fontSize:9,display:"block",color:cfg.color,fontWeight:700}}>今日</span>}
               {d.slice(5).replace("-","/")}({dow})
               {hasRes&&<span style={{display:"block",fontSize:8,color:isActive?cfg.color:"#9ca3af"}}>●</span>}
@@ -475,12 +501,12 @@ function BenchTab({data, persist, userName, roomKey, past}) {
               const isMine=slot?.name===userName||(slot?.partner&&slot?.partner===userName);
               return(
                 <div key={`${h}-${m}`}
-                  onClick={()=>!past&&setModal({bench,h,m,existing:slot})}
+                  onClick={()=>!past&&!isLabLocked&&setModal({bench,h,m,existing:slot})}
                   style={{...S.slot,
                     ...(slot
                       ? (isMine?{...S.slotMine,background:cfg.bgColor,border:`2px solid ${cfg.color}`}:S.slotOther)
                       : S.slotEmpty),
-                    cursor:past?"default":"pointer"}}>
+                    cursor:(past||isLabLocked)?"default":"pointer"}}>
                   <span style={S.slotTime}>{tLabel(h,m)}</span>
                   {slot&&<span style={S.slotName}>{slot.name}{slot.partner&&slot.partner!=="なし"?`・${slot.partner}`:""}</span>}
                 </div>
